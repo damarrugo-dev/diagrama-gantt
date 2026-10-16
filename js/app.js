@@ -236,6 +236,48 @@ function cambiarNivel(delta) {
     }
   });
 }
+// Pasa tareas (con sus subtareas) al final de otra épica; destino null = sin épica
+function moverAEpica(p, ids, destino) {
+  const bloques = [];
+  for (const id of ids) {
+    if (bloques.some(b => b.some(t => t.id === id))) continue;
+    const [i, j] = bloque(id);
+    bloques.push(p.tareas.slice(i, j));
+  }
+  const mover = new Set(bloques.flat().map(t => t.id));
+  if (destino && mover.has(destino)) return false;
+  p.tareas = p.tareas.filter(t => !mover.has(t.id));
+  const nivelDestino = destino ? p.tareas.find(t => t.id === destino).nivel + 1 : 1;
+  let pos = p.tareas.length;
+  if (destino) {
+    const i = p.tareas.findIndex(t => t.id === destino);
+    pos = i + 1;
+    while (pos < p.tareas.length && p.tareas[pos].nivel > p.tareas[i].nivel) pos++;
+  }
+  const nuevas = bloques.flatMap(b => { const delta = nivelDestino - b[0].nivel; return b.map(t => ({ ...t, nivel: t.nivel + delta })); });
+  p.tareas.splice(pos, 0, ...nuevas);
+  return true;
+}
+const epicasDisponibles = excluir => estado.proyecto.tareas.filter(t => R(t.id).resumen && !excluir.has(t.id));
+const nombreEpica = t => `${'— '.repeat(R(t.id).nivel - 1)}${t.nombre || '(sin nombre)'}`;
+
+function dialogoMoverAEpica() {
+  const ids = seleccionOrdenada();
+  if (!ids.length) return aviso('Selecciona las tareas que quieres mover (clic en su Id).');
+  const excluir = new Set();
+  for (const id of ids) { const [i, j] = bloque(id); estado.proyecto.tareas.slice(i, j).forEach(t => excluir.add(t.id)); }
+  const sel = h('select', {}, h('option', { value: '' }, 'Sin épica (nivel principal)'),
+    epicasDisponibles(excluir).map(t => h('option', { value: t.id }, nombreEpica(t))));
+  const dlg = abrirDialogo('Mover a épica', [h('p', {}, `${ids.length === 1 ? 'La tarea seleccionada pasa' : `Las ${ids.length} tareas seleccionadas pasan`} al final de la épica que elijas. Sus vínculos se conservan.`), campo('Épica de destino', sel)], [
+    h('button', { type: 'button', class: 'primario', onclick: () => {
+      dlg.close();
+      cambiar(p => moverAEpica(p, ids, sel.value || null));
+      if (sel.value) { estado.plegadas.delete(sel.value); render(); }
+    } }, 'Mover'),
+    h('button', { type: 'button', onclick: () => dlg.close() }, 'Cancelar'),
+  ]);
+}
+
 function mover(dir) {
   const [id] = seleccionOrdenada();
   if (!id) return aviso('Selecciona una tarea.');
@@ -979,6 +1021,13 @@ function dialogoTarea(id) {
     usarColor: h('input', { type: 'checkbox', checked: !!t.color }),
     notas: h('textarea', { rows: 5 }, t.notas || ''),
   };
+  const epicaActual = R(id).padre || '';
+  {
+    const [i, j] = bloque(id);
+    const excluir = new Set(p.tareas.slice(i, j).map(x => x.id));
+    f.epica = h('select', {}, h('option', { value: '' }, 'Sin épica'),
+      epicasDisponibles(excluir).map(x => h('option', { value: x.id, selected: x.id === epicaActual }, nombreEpica(x))));
+  }
   const tablaPred = h('div');
   const pintarPred = () => tablaPred.replaceChildren(h('table', { class: 'mini' },
     h('tr', {}, h('th', {}, 'Id'), h('th', {}, 'Nombre'), h('th', {}, 'Tipo'), h('th', {}, 'Pos. (días)'), h('th', {})),
@@ -1011,6 +1060,7 @@ function dialogoTarea(id) {
     General: h('div', { class: 'rejilla2' },
       campo('Nombre', f.nombre), campo('Duración', f.duracion), campo('% completado', f.pct), campo('Modo', f.modo),
       campo('Comienzo manual', f.comienzoManual),
+      campo('Épica', f.epica),
       h('div', { class: 'campo' }, h('span', {}, 'Fechas calculadas'), h('div', {}, `${fmtFechaLarga(r.comienzo)} → ${fmtFechaLarga(r.fin)}`)),
       campo('Color de la barra', h('div', {}, f.usarColor, ' ', f.color))),
     Predecesoras: tablaPred,
@@ -1045,6 +1095,7 @@ function dialogoTarea(id) {
         t.fechaLimite = f.fechaLimite.value || null;
         t.color = f.usarColor.checked ? f.color.value : null;
         t.notas = f.notas.value.trim() || null;
+        if (f.epica.value !== epicaActual) moverAEpica(p, [id], f.epica.value || null);
         p.dependencias = p.dependencias.filter(x => x.succ !== id);
         for (const x of preds) agregarVinculo(p, x.pred, id, x.tipo, x.retraso);
         p.asignaciones = p.asignaciones.filter(a => a.tarea !== id).concat(asigs);
@@ -1226,6 +1277,7 @@ const ACCIONES = {
   anularSangria: () => cambiarNivel(-1),
   subir: () => mover(-1),
   bajar: () => mover(1),
+  moverEpica: dialogoMoverAEpica,
   vincular, desvincular, eliminar,
   informacion: () => { const [id] = seleccionOrdenada(); id ? dialogoTarea(id) : aviso('Selecciona una tarea.'); },
   irHoy: () => desplazarA(addDaysISO(hoyISO(), -7)),

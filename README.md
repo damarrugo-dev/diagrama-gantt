@@ -10,6 +10,7 @@ Es un sitio estático (`index.html`, `styles.css`, `js/`) que se publica gratis 
 | --- | --- |
 | Épicas que agrupan tareas (botón *Épica*, sangría / anular sangría, EDT); contraer o expandir cada épica, *Solo épicas* para una vista limpia de tiempos | ✔ |
 | Vínculos entre tareas de épicas distintas (con la épica contraída, la flecha llega a su barra) | ✔ |
+| Pasar tareas de una épica a otra (botón *Mover a épica* o campo *Épica* en Información de la tarea) | ✔ |
 | Hitos (duración 0) | ✔ |
 | Programación automática y manual | ✔ |
 | Vínculos FC, CC, FF, CF con posposición o adelanto (`5CC+2d`) | ✔ — en la columna *Predecesoras*, en el diálogo o arrastrando de una barra a otra |
