@@ -1,0 +1,30 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Solo personas que entraron con el enlace al correo y cuyo correo es de la empresa.
+    // Si cambias los dominios aquí, cámbialos también en config.js (login.dominios).
+    function correo() {
+      return request.auth.token.email.lower();
+    }
+    function esDeLaEmpresa() {
+      return request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.email_verified == true
+        && correo().matches('.*@(hitss|anava)[.]com$');
+    }
+
+    // Cada proyecto solo lo ven y editan los correos de su lista "acceso".
+    match /gantt_proyectos/{proyecto} {
+      allow read: if esDeLaEmpresa() && correo() in resource.data.acceso;
+      allow create: if esDeLaEmpresa()
+        && request.resource.data.propietario == correo()
+        && request.resource.data.acceso == [correo()];
+      allow update: if esDeLaEmpresa()
+        && correo() in resource.data.acceso
+        && request.resource.data.propietario == resource.data.propietario
+        // solo el propietario cambia quién tiene acceso
+        && (request.resource.data.acceso == resource.data.acceso || correo() == resource.data.propietario);
+      allow delete: if esDeLaEmpresa() && correo() == resource.data.propietario;
+    }
+  }
+}

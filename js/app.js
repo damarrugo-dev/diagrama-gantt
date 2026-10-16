@@ -1,7 +1,7 @@
-import { supabaseUrl, supabaseAnonKey } from '../config.js';
+import { firebaseConfig, login, supabaseUrl, supabaseAnonKey } from '../config.js';
 import { programar, parsePredecesoras, textoPredecesoras, ancestros, RESTRICCIONES, NOMBRE_VINCULO, TIPOS_VINCULO } from './programador.js';
 import { parseISO, addDaysISO, toISO } from './calendario.js';
-import { AlmacenLocal, AlmacenSupabase, nuevoId, proyectoVacio } from './almacen.js';
+import { AlmacenLocal, AlmacenSupabase, AlmacenFirebase, nuevoId, proyectoVacio } from './almacen.js';
 
 // ---------- Utilidades ----------
 const $ = (s, el = document) => el.querySelector(s);
@@ -1213,6 +1213,7 @@ function conectarInterfaz() {
 // ---------- Arranque ----------
 async function arrancar() {
   conectarInterfaz();
+  if (firebaseConfig) return arrancarFirebase();
   if (!supabaseUrl || !supabaseAnonKey) {
     estado.almacen = new AlmacenLocal();
     return iniciarProyectos();
@@ -1240,6 +1241,71 @@ async function arrancar() {
   let dentro = false;
   sb.auth.onAuthStateChange((evento, sesion) => {
     if (sesion && !dentro) { dentro = true; entrar(sesion); }
+  });
+}
+
+// Firebase: entra con un enlace al correo (solo correos de login.dominios), como en el tablero Kanban
+async function arrancarFirebase() {
+  ponerEstado('Conectando…');
+  const V = '10.12.2';
+  const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
+  const fs = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
+  const au = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
+  const app = initializeApp(firebaseConfig);
+  const db = fs.getFirestore(app);
+  const auth = au.getAuth(app);
+  const dominios = (login?.dominios || []).map(d => d.toLowerCase().replace(/^@/, ''));
+  const permitido = correo => !dominios.length || dominios.some(d => (correo || '').toLowerCase().endsWith('@' + d));
+  const textoDominios = dominios.map(d => '@' + d).join(' o ');
+  const CLAVE = 'gantt:correo-para-entrar';
+  const msg = t => ($('#msgLogin').textContent = t);
+  if (dominios.length) $('#formLogin p').textContent = `Escribe tu correo ${textoDominios} y te llegará un enlace para entrar.`;
+
+  // Volvió desde el enlace del correo
+  if (au.isSignInWithEmailLink(auth, location.href)) {
+    let correo = '';
+    try { correo = localStorage.getItem(CLAVE) || ''; } catch {}
+    if (!correo) correo = prompt('Escribe el mismo correo al que llegó el enlace:') || '';
+    try {
+      await au.signInWithEmailLink(auth, correo, location.href);
+      try { localStorage.removeItem(CLAVE); } catch {}
+    } catch (e) {
+      console.error(e);
+      msg('El enlace ya se usó o venció. Pide uno nuevo.');
+    }
+    const limpia = new URL(location.href);
+    for (const k of [...limpia.searchParams.keys()]) if (k !== 'proyecto') limpia.searchParams.delete(k);
+    history.replaceState(null, '', limpia.href);
+  }
+  $('#formLogin').addEventListener('submit', async e => {
+    e.preventDefault();
+    const correo = $('#correoLogin').value.trim().toLowerCase();
+    if (!permitido(correo)) return msg(`Usa tu correo ${textoDominios}.`);
+    msg('Enviando…');
+    try {
+      await au.sendSignInLinkToEmail(auth, correo, { url: location.origin + location.pathname, handleCodeInApp: true });
+      try { localStorage.setItem(CLAVE, correo); } catch {}
+      msg(`Listo. Revisa ${correo} (también la carpeta de spam) y abre el enlace en este mismo dispositivo.`);
+    } catch (err) {
+      msg('No se pudo enviar el enlace: ' + (err.message || err.code));
+    }
+  });
+
+  await auth.authStateReady();
+  let dentro = false;
+  au.onAuthStateChanged(auth, async usuario => {
+    if (usuario && permitido(usuario.email)) {
+      if (dentro) return;
+      dentro = true;
+      $('#pantallaLogin').hidden = true;
+      $('#usuario').replaceChildren(usuario.email, ' ', h('button', { onclick: async () => { await au.signOut(auth); location.reload(); } }, 'Salir'));
+      estado.almacen = new AlmacenFirebase(fs, db, usuario.email);
+      try { await iniciarProyectos(); } catch (e) { ponerEstado('Error al cargar: ' + e.message, true); }
+      return;
+    }
+    ponerEstado('');
+    $('#pantallaLogin').hidden = false;
+    if (usuario) { msg(`La cuenta ${usuario.email || ''} no tiene acceso. Entra con tu correo ${textoDominios}.`); au.signOut(auth); }
   });
 }
 

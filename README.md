@@ -2,7 +2,7 @@
 
 Planificador de proyectos en línea al estilo de **Microsoft Project**: tabla de tareas a la izquierda y diagrama de Gantt a la derecha.
 
-Es un sitio estático (`index.html`, `styles.css`, `js/`) que se publica gratis con Netlify. Los datos viven en una base de datos **privada y gratuita en Supabase** (PostgreSQL). Mientras `config.js` tenga `supabaseUrl = null`, funciona en **modo de prueba** (solo guarda en el navegador).
+Es un sitio estático (`index.html`, `styles.css`, `js/`) que se publica gratis con Netlify. Los datos viven en una base de datos **privada y gratuita en Firebase** (Firestore). Mientras `config.js` tenga `firebaseConfig = null`, funciona en **modo de prueba** (solo guarda en el navegador).
 
 ## Funciones
 
@@ -26,7 +26,7 @@ Es un sitio estático (`index.html`, `styles.css`, `js/`) que se publica gratis 
 | Mostrar nivel de esquema, buscar tarea | ✔ |
 | Deshacer / rehacer | ✔ |
 | Exportar a Excel (CSV) e imprimir / guardar como PDF | ✔ |
-| Varios proyectos por usuario, compartir con otros (tabla `miembros`) | ✔ base de datos lista; falta la pantalla para invitar |
+| Varios proyectos por usuario, compartir con otros (lista `acceso`) | ✔ reglas listas; falta la pantalla para invitar |
 
 Atajos de teclado como en Project: `Insert` (nueva tarea), `Supr` (eliminar), `Alt+Shift+→ / ←` (sangría), `Ctrl+F2` (vincular), `Ctrl+Shift+F2` (desvincular), `Shift+F2` (información de la tarea), `Ctrl+Z / Ctrl+Y`.
 
@@ -44,22 +44,27 @@ El repositorio es **privado**, así que el sitio se publica con Netlify (GitHub 
 4. Deja *Build command* vacío y *Publish directory* en `/` → **Deploy**.
 5. En **Project configuration** → **Change project name** ponle `diagrama-gantt`. El sitio queda en `https://diagrama-gantt.netlify.app/` (si el nombre está ocupado, usa el que te asigne). Cada `git push` lo actualiza solo.
 
-### 2. Base de datos privada (Supabase, gratis)
+### 2. Base de datos privada (Firebase, gratis)
 
-1. Entra a <https://supabase.com> → **Start your project** → inicia sesión con tu cuenta de GitHub.
-2. **New project** → nombre `diagrama-gantt` → escribe una contraseña para la base de datos (guárdala) → región **South America (São Paulo)** → plan **Free** → **Create new project**.
-3. Menú izquierdo **SQL Editor** → **New query** → pega todo el contenido de [`supabase/schema.sql`](supabase/schema.sql) → **Run**. Crea las tablas y las reglas de privacidad (RLS): cada usuario solo ve sus proyectos.
-4. **Authentication** → **URL Configuration**:
-   - *Site URL*: `https://diagrama-gantt.netlify.app/`
-   - *Redirect URLs* → **Add URL**: la misma dirección.
-5. **Project Settings** → **API** (o **Data API** / **API Keys**): copia **Project URL** y la clave **anon public** y pégalas en [`config.js`](config.js). Sube el cambio a GitHub.
-6. Abre el sitio, escribe tu correo y entra con el enlace que te llega.
+Se usa un proyecto de Firebase **nuevo y aparte** del tablero Kanban: así las reglas de seguridad de uno no pisan las del otro.
 
-Para que nadie más pueda crear cuenta: cuando tú (y tu equipo) ya hayan entrado una vez, ve a **Authentication** → **Sign In / Providers** y desactiva **Allow new users to sign up**.
+1. Entra a <https://console.firebase.google.com> → **Crear un proyecto** → nombre `diagrama-gantt` → desactiva Google Analytics → **Crear proyecto**.
+2. **Compilación / Build** → **Firestore Database** → **Crear base de datos** → ubicación `southamerica-east1` → **modo de producción** → **Crear**.
+3. Pestaña **Reglas**: borra lo que hay, pega [`firestore.rules`](firestore.rules) → **Publicar**.
+4. **Compilación / Build** → **Authentication** → **Comenzar** → pestaña **Método de acceso** → **Correo electrónico/contraseña** → activa **Vínculo de correo electrónico (acceso sin contraseña)** → **Guardar**.
+5. En **Authentication** → **Configuración** → **Dominios autorizados** → **Agregar dominio**: `diagrama-gantt.netlify.app`.
+6. Rueda ⚙ → **Configuración del proyecto** → *Tus apps* → ícono **`</>`** (Web) → apodo `gantt` → **Registrar app** → copia el bloque `firebaseConfig` y pégalo en [`config.js`](config.js) en lugar de `null`. Sube el cambio a GitHub.
+7. Abre el sitio, escribe tu correo y entra con el enlace que te llega.
 
-> La clave **anon** es pública por diseño: lo que protege los datos son las reglas RLS. **Nunca** pongas en `config.js` la clave **service_role**.
+Quién entra: solo correos **@hitss.com** o **@anava.com** (igual que el Kanban). Para cambiarlo, edita `login.dominios` en `config.js` **y** la línea `matches(...)` en `firestore.rules`.
 
-Límites del plan gratuito que conviene saber: 500 MB de base de datos (sobra para miles de proyectos), el proyecto se **pausa tras una semana sin uso** (se reactiva desde el panel de Supabase con un clic), y el correo integrado envía pocos mensajes por hora (para un equipo grande conviene configurar un SMTP propio en *Authentication → Emails*).
+Quién ve cada proyecto: solo quien lo creó y los correos de su lista `acceso` (el propietario puede compartirlo; los demás no pueden cambiar esa lista ni borrar el proyecto).
+
+> La configuración `firebaseConfig` es pública por diseño: lo que protege los datos son las reglas de `firestore.rules`.
+
+Plan gratuito (Spark): 1 GiB de datos, 50.000 lecturas y 20.000 escrituras por día. Cada proyecto es un solo documento (hasta ~1 MB, varios miles de tareas).
+
+**Alternativa:** también puede usar Supabase (PostgreSQL). Pega [`supabase/schema.sql`](supabase/schema.sql) en el *SQL Editor* de Supabase y llena `supabaseUrl` y `supabaseAnonKey` en `config.js` dejando `firebaseConfig = null`.
 
 ## Probar en tu computador
 
@@ -73,10 +78,11 @@ python3 -m http.server 8000
 ```
 index.html            pantalla principal
 styles.css            estilos (incluye impresión y modo oscuro)
-config.js             conexión a Supabase (null = modo de prueba)
+config.js             conexión a Firebase o Supabase (null = modo de prueba)
+firestore.rules       reglas de seguridad de Firebase
 js/app.js             interfaz: tabla, diagrama, diálogos, barra de herramientas
 js/programador.js     motor de programación: vínculos, restricciones, ruta crítica, recursos
 js/calendario.js      calendario laboral (días hábiles y festivos)
-js/almacen.js         guardado en el navegador o en Supabase
-supabase/schema.sql   tablas, índices y reglas de privacidad (RLS)
+js/almacen.js         guardado en el navegador, en Firebase o en Supabase
+supabase/schema.sql   alternativa: tablas y reglas de privacidad para Supabase
 ```
