@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Diagrama de Gantt</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='2' width='8' height='3' fill='%232f6fed'/><rect x='5' y='7' width='9' height='3' fill='%23e5484d'/><rect x='3' y='12' width='6' height='3' fill='%2330a46c'/></svg>">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="encabezado">
+    <div class="marca">Diagrama de Gantt</div>
+    <select id="selProyecto" title="Proyecto"></select>
+    <span id="estadoGuardado" class="estado"></span>
+    <span class="espacio"></span>
+    <span id="usuario" class="usuario"></span>
+  </header>
+
+  <nav class="cinta" id="cinta">
+    <div class="grupo">
+      <button data-acc="deshacer" title="Deshacer (Ctrl+Z)">↶</button>
+      <button data-acc="rehacer" title="Rehacer (Ctrl+Y)">↷</button>
+    </div>
+    <div class="grupo">
+      <span class="titulo-grupo">Tarea</span>
+      <button data-acc="nuevaTarea" title="Insertar tarea (Insert)">＋ Tarea</button>
+      <button data-acc="nuevoHito" title="Insertar hito">◆ Hito</button>
+      <button data-acc="nuevoResumen" title="Insertar tarea de resumen">▬ Resumen</button>
+      <button data-acc="sangria" title="Aplicar sangría (Alt+Shift+→)">⇥</button>
+      <button data-acc="anularSangria" title="Anular sangría (Alt+Shift+←)">⇤</button>
+      <button data-acc="subir" title="Subir">↑</button>
+      <button data-acc="bajar" title="Bajar">↓</button>
+      <button data-acc="vincular" title="Vincular las tareas seleccionadas (Ctrl+F2)">🔗 Vincular</button>
+      <button data-acc="desvincular" title="Desvincular las tareas seleccionadas (Ctrl+Shift+F2)">⛓ Desvincular</button>
+      <button data-acc="informacion" title="Información de la tarea (Shift+F2)">ⓘ Información</button>
+      <button data-acc="eliminar" title="Eliminar tarea (Supr)">🗑</button>
+    </div>
+    <div class="grupo">
+      <span class="titulo-grupo">Ver</span>
+      <select id="selZoom" title="Escala de tiempo">
+        <option value="dias">Días</option>
+        <option value="semanas">Semanas</option>
+        <option value="meses">Meses</option>
+        <option value="trimestres">Trimestres</option>
+      </select>
+      <button data-acc="irHoy" title="Desplazarse a hoy">Hoy</button>
+      <button data-acc="irTarea" title="Desplazarse a la tarea seleccionada">→ Tarea</button>
+      <label class="chk"><input type="checkbox" id="chkCritica" checked> Ruta crítica</label>
+      <label class="chk"><input type="checkbox" id="chkLineaBase" checked> Línea base</label>
+      <select id="selEsquema" title="Mostrar nivel de esquema">
+        <option value="">Esquema: todo</option>
+        <option value="1">Nivel 1</option>
+        <option value="2">Nivel 2</option>
+        <option value="3">Nivel 3</option>
+      </select>
+      <input id="txtFiltro" type="search" placeholder="Buscar tarea…" title="Filtrar por nombre">
+    </div>
+    <div class="grupo">
+      <span class="titulo-grupo">Proyecto</span>
+      <button data-acc="infoProyecto" title="Información del proyecto y calendario">📅 Proyecto</button>
+      <button data-acc="recursos" title="Hoja de recursos">👥 Recursos</button>
+      <button data-acc="lineaBase" title="Establecer línea base">⎘ Línea base</button>
+      <button data-acc="exportar" title="Exportar a Excel (CSV)">⭳ CSV</button>
+      <button data-acc="imprimir" title="Imprimir o guardar como PDF">🖶 Imprimir</button>
+    </div>
+  </nav>
+
+  <main class="vista" id="vista">
+    <section class="panel" id="panelTabla"></section>
+    <div class="divisor" id="divisor" title="Arrastra para cambiar el ancho"></div>
+    <section class="panel" id="panelGrafico"></section>
+  </main>
+
+  <footer class="pie" id="pie"></footer>
+
+  <div id="pantallaLogin" class="pantalla" hidden>
+    <form class="tarjeta" id="formLogin">
+      <h1>Diagrama de Gantt</h1>
+      <p>Escribe tu correo y te llegará un enlace para entrar.</p>
+      <input type="email" id="correoLogin" required placeholder="tu@correo.com" autocomplete="email">
+      <button type="submit" class="primario">Enviar enlace</button>
+      <p id="msgLogin" class="nota"></p>
+    </form>
+  </div>
+
+  <dialog id="dialogo"></dialog>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
