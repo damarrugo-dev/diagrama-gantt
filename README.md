@@ -2,7 +2,7 @@
 
 Planificador de proyectos en línea al estilo de **Microsoft Project**: tabla de tareas a la izquierda y diagrama de Gantt a la derecha.
 
-Es un sitio estático (`index.html`, `styles.css`, `js/`) que se publica gratis con Netlify. Los datos viven en una base de datos **privada y gratuita en Firebase** (Firestore). Mientras `config.js` tenga `firebaseConfig = null`, funciona en **modo de prueba** (solo guarda en el navegador).
+Es un sitio estático (`index.html`, `styles.css`, `js/`) que se publica gratis con GitHub Pages. Los datos viven en una base de datos **privada y gratuita en Firebase** (Firestore). Mientras `config.js` tenga `firebaseConfig = null`, funciona en **modo de prueba** (solo guarda en el navegador).
 
 ## Funciones
 
@@ -34,15 +34,14 @@ Duraciones: `5`, `5d`, `2sem`, `16h`, `1mes`.
 
 ## Puesta en marcha
 
-### 1. Subir el código a GitHub y publicarlo (Netlify, gratis)
+### 1. Publicar el sitio (GitHub Pages, gratis)
 
-El repositorio es **privado**, así que el sitio se publica con Netlify (GitHub Pages solo es gratis con repositorios públicos).
+El repositorio es **público** para poder usar GitHub Pages gratis. El código no tiene secretos: los datos están protegidos por las reglas de Firebase (`firestore.rules`).
 
-1. Crea el repositorio privado **`diagrama-gantt`** en <https://github.com/new> (sin README) y sube estos archivos (`git push`).
-2. Entra a <https://app.netlify.com> → inicia sesión con tu cuenta de GitHub.
-3. **Add new project** → **Import an existing project** → **GitHub** → autoriza el acceso a `diagrama-gantt` → elige el repositorio.
-4. Deja *Build command* vacío y *Publish directory* en `/` → **Deploy**.
-5. En **Project configuration** → **Change project name** ponle `diagrama-gantt`. El sitio queda en `https://diagrama-gantt.netlify.app/` (si el nombre está ocupado, usa el que te asigne). Cada `git push` lo actualiza solo.
+1. En el repositorio: **Settings** → **Pages**.
+2. En *Build and deployment* → *Source*: **Deploy from a branch**.
+3. En *Branch*: **main** y carpeta **/ (root)** → **Save**.
+4. En uno o dos minutos queda en `https://damarrugo-dev.github.io/diagrama-gantt/`. Cada cambio que se sube a `main` se publica solo.
 
 ### 2. Base de datos privada (Firebase, gratis)
 
@@ -52,7 +51,7 @@ Se usa un proyecto de Firebase **nuevo y aparte** del tablero Kanban: así las r
 2. **Compilación / Build** → **Firestore Database** → **Crear base de datos** → ubicación `southamerica-east1` → **modo de producción** → **Crear**.
 3. Pestaña **Reglas**: borra lo que hay, pega [`firestore.rules`](firestore.rules) → **Publicar**.
 4. **Compilación / Build** → **Authentication** → **Comenzar** → pestaña **Método de acceso** → **Correo electrónico/contraseña** → activa **Vínculo de correo electrónico (acceso sin contraseña)** → **Guardar**.
-5. En **Authentication** → **Configuración** → **Dominios autorizados** → **Agregar dominio**: `diagrama-gantt.netlify.app`.
+5. En **Authentication** → **Configuración** → **Dominios autorizados** → **Agregar dominio**: `damarrugo-dev.github.io`.
 6. Rueda ⚙ → **Configuración del proyecto** → *Tus apps* → ícono **`</>`** (Web) → apodo `gantt` → **Registrar app** → copia el bloque `firebaseConfig` y pégalo en [`config.js`](config.js) en lugar de `null`. Sube el cambio a GitHub.
 7. Abre el sitio, escribe tu correo y entra con el enlace que te llega.
 
