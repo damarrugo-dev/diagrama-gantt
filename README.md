@@ -2,7 +2,7 @@
 
 Planificador de proyectos en línea al estilo de **Microsoft Project**: tabla de tareas a la izquierda y diagrama de Gantt a la derecha.
 
-Es un sitio estático (`index.html`, `styles.css`, `js/`) que se publica gratis con GitHub Pages. Los datos viven en una base de datos **privada y gratuita en Supabase** (PostgreSQL). Mientras `config.js` tenga `supabaseUrl = null`, funciona en **modo de prueba** (solo guarda en el navegador).
+Es un sitio estático (`index.html`, `styles.css`, `js/`) que se publica gratis con Netlify. Los datos viven en una base de datos **privada y gratuita en Supabase** (PostgreSQL). Mientras `config.js` tenga `supabaseUrl = null`, funciona en **modo de prueba** (solo guarda en el navegador).
 
 ## Funciones
 
@@ -34,14 +34,15 @@ Duraciones: `5`, `5d`, `2sem`, `16h`, `1mes`.
 
 ## Puesta en marcha
 
-### 1. Subir el código a GitHub y publicarlo (GitHub Pages)
+### 1. Subir el código a GitHub y publicarlo (Netlify, gratis)
 
-1. Crea un repositorio vacío llamado **`diagrama-gantt`** en <https://github.com/new> (sin README).
-   - **Público** permite GitHub Pages gratis. El código no tiene secretos; los datos quedan privados en Supabase.
-   - Si lo quieres **privado**, GitHub Pages pide plan de pago: en ese caso publícalo gratis con Netlify, Vercel o Cloudflare Pages conectando el repositorio.
-2. Sube estos archivos (`git push`).
-3. En el repositorio: **Settings** → **Pages** → *Source*: **Deploy from a branch** → *Branch*: **main** y **/ (root)** → **Save**.
-4. En uno o dos minutos queda en `https://damarrugo-dev.github.io/diagrama-gantt/`.
+El repositorio es **privado**, así que el sitio se publica con Netlify (GitHub Pages solo es gratis con repositorios públicos).
+
+1. Crea el repositorio privado **`diagrama-gantt`** en <https://github.com/new> (sin README) y sube estos archivos (`git push`).
+2. Entra a <https://app.netlify.com> → inicia sesión con tu cuenta de GitHub.
+3. **Add new project** → **Import an existing project** → **GitHub** → autoriza el acceso a `diagrama-gantt` → elige el repositorio.
+4. Deja *Build command* vacío y *Publish directory* en `/` → **Deploy**.
+5. En **Project configuration** → **Change project name** ponle `diagrama-gantt`. El sitio queda en `https://diagrama-gantt.netlify.app/` (si el nombre está ocupado, usa el que te asigne). Cada `git push` lo actualiza solo.
 
 ### 2. Base de datos privada (Supabase, gratis)
 
@@ -49,7 +50,7 @@ Duraciones: `5`, `5d`, `2sem`, `16h`, `1mes`.
 2. **New project** → nombre `diagrama-gantt` → escribe una contraseña para la base de datos (guárdala) → región **South America (São Paulo)** → plan **Free** → **Create new project**.
 3. Menú izquierdo **SQL Editor** → **New query** → pega todo el contenido de [`supabase/schema.sql`](supabase/schema.sql) → **Run**. Crea las tablas y las reglas de privacidad (RLS): cada usuario solo ve sus proyectos.
 4. **Authentication** → **URL Configuration**:
-   - *Site URL*: `https://damarrugo-dev.github.io/diagrama-gantt/`
+   - *Site URL*: `https://diagrama-gantt.netlify.app/`
    - *Redirect URLs* → **Add URL**: la misma dirección.
 5. **Project Settings** → **API** (o **Data API** / **API Keys**): copia **Project URL** y la clave **anon public** y pégalas en [`config.js`](config.js). Sube el cambio a GitHub.
 6. Abre el sitio, escribe tu correo y entra con el enlace que te llega.
