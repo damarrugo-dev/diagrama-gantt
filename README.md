@@ -59,6 +59,8 @@ Se usa un proyecto de Firebase **nuevo y aparte** del tablero Kanban: así las r
 
 Quién entra: solo correos **@hitss.com** o **@anava.com** (igual que el Kanban). Para cambiarlo, edita `login.dominios` en `config.js` **y** la línea `matches(...)` en `firestore.rules`.
 
+**Control de acceso** (igual que en el Kanban): cada vez que alguien pide el enlace, entra o intenta con un correo no permitido, queda registrado en Firestore (colección `accesos`). Los administradores de `config.js` (`login.administradores`) ven el botón **Accesos** arriba a la derecha, con el resumen por persona, el detalle de movimientos y la opción de exportarlo a Excel. Nadie puede cambiar ni borrar ese registro. Si cambias los administradores, cámbialos también en `esAdministrador()` de `firestore.rules`.
+
 Quién ve cada proyecto: solo quien lo creó y los correos de su lista `acceso` (el propietario puede compartirlo; los demás no pueden cambiar esa lista ni borrar el proyecto).
 
 > La configuración `firebaseConfig` es pública por diseño: lo que protege los datos son las reglas de `firestore.rules`.

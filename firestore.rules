@@ -13,6 +13,19 @@ service cloud.firestore {
         && correo().matches('.*@(hitss|anava)[.]com$');
     }
 
+    // Pueden ver el registro de accesos. Si cambias la lista, cámbiala también en config.js (login.administradores).
+    function esAdministrador() {
+      return esDeLaEmpresa() && correo() in ['marrugod@hitss.com'];
+    }
+    // Registro de un acceso: solo esos campos, con la hora del servidor
+    function registroValido() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['tipo', 'email', 'navegador', 'fecha'])
+        && d.fecha == request.time
+        && d.email is string && d.email.size() <= 200
+        && d.navegador is string && d.navegador.size() <= 60;
+    }
+
     // Cada proyecto solo lo ven y editan los correos de su lista "acceso".
     match /gantt_proyectos/{proyecto} {
       allow read: if esDeLaEmpresa() && correo() in resource.data.acceso;
@@ -25,6 +38,19 @@ service cloud.firestore {
         // solo el propietario cambia quién tiene acceso
         && (request.resource.data.acceso == resource.data.acceso || correo() == resource.data.propietario);
       allow delete: if esDeLaEmpresa() && correo() == resource.data.propietario;
+    }
+
+    // Control de acceso: quién pide el enlace, quién entra y quién es rechazado
+    match /accesos/{id} {
+      // Pedir el enlace o ser rechazado ocurre antes de iniciar sesión
+      allow create: if registroValido() && (
+        request.resource.data.tipo in ['solicitud', 'rechazado']
+        || (request.resource.data.tipo == 'ingreso' && esDeLaEmpresa()
+            && request.resource.data.email == correo())
+      );
+      // Nadie puede cambiar ni borrar el registro; solo el administrador lo lee
+      allow read: if esAdministrador();
+      allow update, delete: if false;
     }
   }
 }

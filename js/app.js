@@ -1399,6 +1399,7 @@ async function arrancarFirebase() {
   const textoDominios = dominios.map(d => '@' + d).join(' o ');
   const CLAVE = 'gantt:correo-para-entrar';
   const msg = t => ($('#msgLogin').textContent = t);
+  registroAccesos = crearRegistroAccesos(fs, db);
   if (dominios.length) $('#formLogin p').textContent = `Escribe tu correo ${textoDominios} y te llegará un enlace para entrar.`;
 
   // Volvió desde el enlace del correo
@@ -1420,10 +1421,14 @@ async function arrancarFirebase() {
   $('#formLogin').addEventListener('submit', async e => {
     e.preventDefault();
     const correo = $('#correoLogin').value.trim().toLowerCase();
-    if (!permitido(correo)) return msg(`Usa tu correo ${textoDominios}.`);
+    if (!permitido(correo)) {
+      registroAccesos.anotar('rechazado', correo);
+      return msg(`Usa tu correo ${textoDominios}.`);
+    }
     msg('Enviando…');
     try {
       await au.sendSignInLinkToEmail(auth, correo, { url: location.origin + location.pathname, handleCodeInApp: true });
+      registroAccesos.anotar('solicitud', correo);
       try { localStorage.setItem(CLAVE, correo); } catch {}
       msg(`Listo. Revisa ${correo} (también la carpeta de spam) y abre el enlace en este mismo dispositivo.`);
     } catch (err) {
@@ -1438,7 +1443,10 @@ async function arrancarFirebase() {
       if (dentro) return;
       dentro = true;
       $('#pantallaLogin').hidden = true;
-      $('#usuario').replaceChildren(usuario.email, ' ', h('button', { onclick: async () => { await au.signOut(auth); location.reload(); } }, 'Salir'));
+      $('#usuario').replaceChildren(
+        esAdministrador(usuario.email) ? h('button', { onclick: dialogoAccesos, title: 'Quién pidió el enlace y quién entró' }, 'Accesos') : '',
+        usuario.email, ' ', h('button', { onclick: async () => { await au.signOut(auth); location.reload(); } }, 'Salir'));
+      registroAccesos.anotarIngreso(usuario);
       estado.almacen = new AlmacenFirebase(fs, db, usuario.email);
       try { await iniciarProyectos(); } catch (e) { ponerEstado('Error al cargar: ' + e.message, true); }
       return;
@@ -1447,6 +1455,93 @@ async function arrancarFirebase() {
     $('#pantallaLogin').hidden = false;
     if (usuario) { msg(`La cuenta ${usuario.email || ''} no tiene acceso. Entra con tu correo ${textoDominios}.`); au.signOut(auth); }
   });
+}
+
+// ---------- Control de acceso (igual que en el tablero Kanban) ----------
+// Guarda en Firestore (colección "accesos") quién pide el enlace, quién entra y quién es rechazado.
+// Solo los administradores de config.js (login.administradores) ven el registro.
+let registroAccesos = { anotar() {}, anotarIngreso() {}, listar: async () => [] };
+const esAdministrador = correo => (login?.administradores || []).map(a => a.toLowerCase()).includes((correo || '').toLowerCase());
+const TEXTO_EVENTO = { solicitud: 'Pidió el enlace', ingreso: 'Entró al diagrama', rechazado: 'Rechazado (correo no permitido)' };
+
+function crearRegistroAccesos(fs, db) {
+  const col = fs.collection(db, 'accesos');
+  const navegador = () => {
+    const ua = navigator.userAgent;
+    const equipo = /Mobi|Android|iPhone|iPad/i.test(ua) ? 'Celular' : 'Computador';
+    const nombre = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Otro';
+    return `${equipo} · ${nombre}`;
+  };
+  const escribir = (tipo, correo) => fs.addDoc(col, { tipo, email: (correo || '').toLowerCase().slice(0, 200), navegador: navegador(), fecha: fs.serverTimestamp() })
+    .catch(e => console.warn('No se pudo registrar el acceso', e));
+  return {
+    anotar: escribir,
+    // Una vez por visita (pestaña abierta), no en cada recarga
+    anotarIngreso(usuario) {
+      const clave = 'gantt:ingreso-registrado';
+      try { if (sessionStorage.getItem(clave) === usuario.uid) return; sessionStorage.setItem(clave, usuario.uid); } catch {}
+      escribir('ingreso', usuario.email);
+    },
+    async listar() {
+      const snap = await fs.getDocs(fs.query(col, fs.orderBy('fecha', 'desc'), fs.limit(1000)));
+      return snap.docs.map(d => { const x = d.data(); return { ...x, fecha: x.fecha?.toDate?.() || null }; });
+    },
+  };
+}
+
+async function dialogoAccesos() {
+  const cuerpo = h('div', {}, 'Cargando…');
+  const dlg = abrirDialogo('Control de acceso', cuerpo, [h('button', { type: 'button', class: 'primario', onclick: () => dlg.close() }, 'Cerrar')]);
+  let filas;
+  try { filas = await registroAccesos.listar(); }
+  catch (e) {
+    console.error(e);
+    cuerpo.textContent = 'No se pudo leer el registro. Revisa que las reglas de Firestore estén publicadas.';
+    return;
+  }
+  const fmt = f => f ? f.toLocaleString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+
+  // Resumen por persona
+  const personas = new Map();
+  for (const r of filas) {
+    const x = personas.get(r.email) || { email: r.email, solicitudes: 0, ingresos: 0, rechazos: 0, primero: null, ultimo: null };
+    if (r.tipo === 'solicitud') x.solicitudes++;
+    if (r.tipo === 'rechazado') x.rechazos++;
+    if (r.tipo === 'ingreso') {
+      x.ingresos++;
+      if (r.fecha && (!x.ultimo || r.fecha > x.ultimo)) x.ultimo = r.fecha;
+      if (r.fecha && (!x.primero || r.fecha < x.primero)) x.primero = r.fecha;
+    }
+    personas.set(r.email, x);
+  }
+  const resumen = [...personas.values()].sort((a, b) => (b.ultimo || 0) - (a.ultimo || 0));
+
+  let pestana = 'personas';
+  const pintar = () => cuerpo.replaceChildren(
+    h('div', { class: 'pestanas' },
+      h('button', { type: 'button', class: pestana === 'personas' ? 'activa' : '', onclick: () => { pestana = 'personas'; pintar(); } }, `Personas (${resumen.length})`),
+      h('button', { type: 'button', class: pestana === 'eventos' ? 'activa' : '', onclick: () => { pestana = 'eventos'; pintar(); } }, `Movimientos (${filas.length})`),
+      h('span', { class: 'espacio' }),
+      h('button', { type: 'button', onclick: () => exportarAccesos(filas) }, '⭳ Exportar')),
+    pestana === 'personas'
+      ? h('table', { class: 'mini accesos' },
+          h('thead', {}, h('tr', {}, ['Correo', 'Pidió enlace', 'Entradas', 'Primera entrada', 'Última entrada'].map(t => h('th', {}, t)))),
+          h('tbody', {}, resumen.map(x => h('tr', { class: x.rechazos && !x.ingresos ? 'rechazado' : '' },
+            h('td', {}, x.email), h('td', {}, x.solicitudes + (x.rechazos ? ` (${x.rechazos} rechazado)` : '')),
+            h('td', {}, x.ingresos), h('td', {}, fmt(x.primero)), h('td', {}, fmt(x.ultimo))))))
+      : h('table', { class: 'mini accesos' },
+          h('thead', {}, h('tr', {}, ['Fecha', 'Correo', 'Qué pasó', 'Dispositivo'].map(t => h('th', {}, t)))),
+          h('tbody', {}, filas.map(r => h('tr', { class: r.tipo === 'rechazado' ? 'rechazado' : '' },
+            h('td', {}, fmt(r.fecha)), h('td', {}, r.email), h('td', {}, TEXTO_EVENTO[r.tipo] || r.tipo), h('td', {}, r.navegador || '—'))))),
+    filas.length ? '' : h('p', { class: 'nota' }, 'Todavía no hay registros.'));
+  pintar();
+}
+
+function exportarAccesos(filas) {
+  const salida = [['Fecha', 'Correo', 'Qué pasó', 'Dispositivo']];
+  for (const r of filas) salida.push([r.fecha ? r.fecha.toLocaleString('es-CO') : '', r.email, TEXTO_EVENTO[r.tipo] || r.tipo, r.navegador || '']);
+  const csv = salida.map(f => f.map(v => /[";\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v).join(';')).join('\r\n');
+  descargar(`accesos-${new Date().toISOString().slice(0, 10)}.csv`, '﻿' + csv, 'text/csv;charset=utf-8');
 }
 
 arrancar().catch(e => { console.error(e); ponerEstado('Error: ' + e.message, true); });

@@ -15,8 +15,10 @@ export const firebaseConfig = {
 
 // Inicio de sesión con Firebase: llega un enlace al correo.
 // Solo se aceptan correos de estos dominios (deben coincidir con firestore.rules). [] = cualquier correo.
+// administradores: ven el registro de accesos (botón "Accesos"); deben coincidir con firestore.rules.
 export const login = {
   dominios: ["hitss.com", "anava.com"],
+  administradores: ["marrugod@hitss.com"],
 };
 
 // ---- Opción 2: Supabase (PostgreSQL) ----

@@ -232,3 +232,8 @@ table.hoja tr.sobre td { background: color-mix(in srgb, var(--critica) 14%, tran
 .lista-pred .opcion:hover { background: var(--sel); }
 .lista-pred .opcion b { display: inline-block; min-width: 24px; color: var(--texto-2); }
 .lista-pred .opcion.resumen { font-weight: 600; }
+
+/* Control de acceso */
+.pestanas .espacio { flex: 1; }
+table.accesos td { font-size: 12px; white-space: nowrap; }
+table.accesos tr.rechazado td { background: color-mix(in srgb, var(--critica) 14%, transparent); }
