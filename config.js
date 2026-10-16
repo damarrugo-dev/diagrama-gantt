@@ -4,15 +4,14 @@
 // ---- Opción 1: Firebase (Firestore) ----
 // Firebase → ⚙ Configuración del proyecto → Tus apps → app web → copia el bloque firebaseConfig.
 // Esa configuración es pública por diseño: los datos los protegen las reglas de firestore.rules.
-export const firebaseConfig = null;
-// export const firebaseConfig = {
-//   apiKey: "...",
-//   authDomain: "diagrama-gantt.firebaseapp.com",
-//   projectId: "diagrama-gantt",
-//   storageBucket: "diagrama-gantt.firebasestorage.app",
-//   messagingSenderId: "...",
-//   appId: "..."
-// };
+export const firebaseConfig = {
+  apiKey: "AIzaSyBxlBYme-zQKNdn3bg6SFejD0VUfpK6s2k",
+  authDomain: "diagrama-gantt-a9d62.firebaseapp.com",
+  projectId: "diagrama-gantt-a9d62",
+  storageBucket: "diagrama-gantt-a9d62.firebasestorage.app",
+  messagingSenderId: "679581264616",
+  appId: "1:679581264616:web:101d889cc075045566375d"
+};
 
 // Inicio de sesión con Firebase: llega un enlace al correo.
 // Solo se aceptan correos de estos dominios (deben coincidir con firestore.rules). [] = cualquier correo.
