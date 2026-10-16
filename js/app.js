@@ -43,11 +43,6 @@ const fmtFechaLarga = iso => new Date(parseISO(iso)).toLocaleDateString('es-CO',
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const fmtDur = (d, hito) => (hito ? '0 días' : `${+d.toFixed(2)} día${d === 1 ? '' : 's'}`);
 const fmtHoras = hrs => `${+hrs.toFixed(1)} h`;
-function fmtMoneda(v) {
-  try {
-    return new Intl.NumberFormat('es-CO', { style: 'currency', currency: estado.proyecto.moneda || 'COP', maximumFractionDigits: 0 }).format(v || 0);
-  } catch { return (v || 0).toFixed(0); }
-}
 // "5", "5d", "2 sem", "16h" → días laborables
 function parseDuracion(texto) {
   const m = String(texto).trim().toLowerCase().replace(',', '.').match(/^(\d+(?:\.\d+)?)\s*(d|días?|dias?|s|sem|semanas?|h|hrs?|horas?|m|mes|meses)?\??$/);
@@ -194,7 +189,7 @@ function seleccionOrdenada() {
 
 // ---------- Acciones ----------
 function nuevaTareaObj(extra = {}) {
-  return { id: nuevoId(), nombre: '', nivel: 1, duracion: 1, modo: 'auto', restriccion: 'ASAP', porcentaje: 0, costoFijo: 0, ...extra };
+  return { id: nuevoId(), nombre: '', nivel: 1, duracion: 1, modo: 'auto', restriccion: 'ASAP', porcentaje: 0, ...extra };
 }
 function insertar(extra) {
   const id = cambiar(p => {
@@ -304,16 +299,16 @@ function establecerLineaBase() {
   const sel = seleccionOrdenada();
   dialogoConfirmar(
     'Establecer línea base',
-    'Guarda las fechas, duraciones y costos actuales para compararlos después (barras grises bajo cada tarea).',
+    'Guarda las fechas y duraciones actuales para compararlos después (barras grises bajo cada tarea).',
     [['Todo el proyecto', () => guardarLB(null)], sel.length ? ['Solo tareas seleccionadas', () => guardarLB(new Set(sel))] : null,
-      ['Borrar línea base', () => cambiar(p => p.tareas.forEach(t => { t.lbComienzo = t.lbFin = t.lbDuracion = t.lbCosto = null; }))]].filter(Boolean),
+      ['Borrar línea base', () => cambiar(p => p.tareas.forEach(t => { t.lbComienzo = t.lbFin = t.lbDuracion = null; }))]].filter(Boolean),
   );
   function guardarLB(solo) {
     cambiar(p => {
       for (const t of p.tareas) {
         if (solo && !solo.has(t.id)) continue;
         const r = R(t.id);
-        Object.assign(t, { lbComienzo: r.comienzo, lbFin: r.fin, lbDuracion: r.e - r.s, lbCosto: r.costo });
+        Object.assign(t, { lbComienzo: r.comienzo, lbFin: r.fin, lbDuracion: r.e - r.s });
       }
     });
     aviso('Línea base guardada.');
@@ -321,11 +316,11 @@ function establecerLineaBase() {
 }
 function exportarCSV() {
   const p = estado.proyecto;
-  const filas = [['Id', 'EDT', 'Nombre', 'Nivel', 'Duración (días)', 'Comienzo', 'Fin', 'Predecesoras', 'Recursos', '% completado', 'Trabajo (h)', 'Costo', 'Margen total (días)', 'Crítica', 'Comienzo previsto', 'Fin previsto']];
+  const filas = [['Id', 'EDT', 'Nombre', 'Nivel', 'Duración (días)', 'Comienzo', 'Fin', 'Predecesoras', 'Recursos', '% completado', 'Trabajo (h)', 'Margen total (días)', 'Crítica', 'Comienzo previsto', 'Fin previsto']];
   for (const t of p.tareas) {
     const r = R(t.id);
     filas.push([r.fila + 1, r.edt, t.nombre, r.nivel, r.e - r.s, r.comienzo, r.fin, predecesorasDe(t.id), recursosDe(t.id), t.porcentaje || 0,
-      +r.trabajo.toFixed(2), +r.costo.toFixed(2), r.holgura, r.critica ? 'Sí' : 'No', t.lbComienzo || '', t.lbFin || '']);
+      +r.trabajo.toFixed(2), r.holgura, r.critica ? 'Sí' : 'No', t.lbComienzo || '', t.lbFin || '']);
   }
   const csv = filas.map(f => f.map(v => /[";\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v).join(';')).join('\r\n');
   descargar(`${p.nombre}.csv`, '﻿' + csv, 'text/csv;charset=utf-8');
@@ -407,7 +402,7 @@ function asignarDesdeTexto(tareaId, texto) {
     const nombre = m[1].trim();
     let rec = p.recursos.find(r => r.nombre.toLowerCase() === nombre.toLowerCase());
     if (!rec) {
-      rec = { id: nuevoId(), nombre, iniciales: nombre.split(/\s+/).map(x => x[0]).join('').slice(0, 3).toUpperCase(), tipo: 'trabajo', maxUnidades: 1, tasaEstandar: 0, costoPorUso: 0 };
+      rec = { id: nuevoId(), nombre, iniciales: nombre.split(/\s+/).map(x => x[0]).join('').slice(0, 3).toUpperCase(), tipo: 'trabajo', maxUnidades: 1 };
       p.recursos.push(rec);
     }
     const unidades = m[2] ? +m[2].replace(',', '.') / 100 : 1;
@@ -437,7 +432,6 @@ const COLUMNAS = [
   { k: 'recursos', t: 'Nombres de los recursos', w: 170 },
   { k: 'pct', t: '% compl.', w: 64 },
   { k: 'trabajo', t: 'Trabajo', w: 72 },
-  { k: 'costo', t: 'Costo', w: 104 },
   { k: 'holgura', t: 'Margen total', w: 84 },
 ];
 const plantillaColumnas = COLUMNAS.map(c => c.w + 'px').join(' ');
@@ -510,7 +504,6 @@ function filaTabla(t) {
     h('div', { class: 'celda c-recursos' }, r.resumen ? '' : entrada('recursos', recursosDe(t.id), { list: 'listaRecursos' })),
     h('div', { class: 'celda c-pct' }, entrada('pct', (t.porcentaje || 0) + '%', { readOnly: r.resumen })),
     h('div', { class: 'celda c-trabajo num' }, fmtHoras(r.trabajo)),
-    h('div', { class: 'celda c-costo num' }, fmtMoneda(r.costo)),
     h('div', { class: 'celda c-holgura num' }, fmtDur(Math.max(0, r.holgura))),
   );
   return fila;
@@ -819,7 +812,6 @@ function desplazarA(iso) {
 // ---------- Pie de página ----------
 function renderPie() {
   const c = estado.calc, p = estado.proyecto;
-  const totalCosto = p.tareas.filter(t => R(t.id).nivel === 1).reduce((a, t) => a + R(t.id).costo, 0);
   const totalTrabajo = p.tareas.filter(t => R(t.id).nivel === 1).reduce((a, t) => a + R(t.id).trabajo, 0);
   const aviso = $('#pie .aviso');
   $('#pie').replaceChildren(...[
@@ -827,7 +819,6 @@ function renderPie() {
     h('span', {}, `Fin: ${fmtFechaLarga(c.fin)}`),
     h('span', {}, `Duración: ${fmtDur(c.finIdx)}`),
     h('span', {}, `Trabajo: ${fmtHoras(totalTrabajo)}`),
-    h('span', {}, `Costo: ${fmtMoneda(totalCosto)}`),
     c.errores.length ? h('span', { class: 'error' }, c.errores.join(' ')) : null,
     c.sobreasignados.size ? h('span', { class: 'error' }, `Recursos sobreasignados: ${[...c.sobreasignados].map(id => p.recursos.find(r => r.id === id)?.nombre).join(', ')}`) : null,
     estado.almacen.modo === 'local' ? h('span', { class: 'nota' }, 'Modo de prueba: los datos se guardan solo en este navegador') : null,
@@ -881,7 +872,6 @@ function dialogoTarea(id) {
     restriccion: h('select', {}, Object.entries(RESTRICCIONES).map(([k, v]) => h('option', { value: k, selected: (t.restriccion || 'ASAP') === k }, v))),
     fechaRestriccion: h('input', { type: 'date', value: t.fechaRestriccion || '' }),
     fechaLimite: h('input', { type: 'date', value: t.fechaLimite || '' }),
-    costoFijo: h('input', { type: 'number', step: 'any', value: t.costoFijo || 0 }),
     color: h('input', { type: 'color', value: t.color || '#4f7fe0' }),
     usarColor: h('input', { type: 'checkbox', checked: !!t.color }),
     notas: h('textarea', { rows: 5 }, t.notas || ''),
@@ -924,7 +914,7 @@ function dialogoTarea(id) {
     Recursos: tablaAsig,
     Avanzado: h('div', { class: 'rejilla2' },
       campo('Tipo de restricción', f.restriccion), campo('Fecha de restricción', f.fechaRestriccion),
-      campo('Fecha límite', f.fechaLimite), campo('Costo fijo', f.costoFijo),
+      campo('Fecha límite', f.fechaLimite),
       h('div', { class: 'campo' }, h('span', {}, 'EDT'), h('div', {}, r.edt)),
       h('div', { class: 'campo' }, h('span', {}, 'Margen total'), h('div', {}, fmtDur(Math.max(0, r.holgura)) + (r.critica ? ' · en la ruta crítica' : '')))),
     Notas: f.notas,
@@ -950,7 +940,6 @@ function dialogoTarea(id) {
         t.restriccion = f.restriccion.value;
         t.fechaRestriccion = t.restriccion === 'ASAP' ? null : (f.fechaRestriccion.value || r.comienzo);
         t.fechaLimite = f.fechaLimite.value || null;
-        t.costoFijo = +f.costoFijo.value || 0;
         t.color = f.usarColor.checked ? f.color.value : null;
         t.notas = f.notas.value.trim() || null;
         p.dependencias = p.dependencias.filter(x => x.succ !== id);
@@ -969,18 +958,15 @@ function dialogoRecursos() {
   const lista = p.recursos.map(r => ({ ...r }));
   const contenedor = h('div');
   const pintar = () => contenedor.replaceChildren(h('table', { class: 'mini hoja' },
-    h('tr', {}, ['Nombre', 'Iniciales', 'Tipo', 'Capacidad máx. (%)', 'Tasa estándar (por hora / unidad)', 'Costo por uso', 'Grupo', 'Correo', ''].map(x => h('th', {}, x))),
+    h('tr', {}, ['Nombre', 'Iniciales', 'Capacidad máx. (%)', 'Grupo', 'Correo', ''].map(x => h('th', {}, x))),
     lista.map((r, i) => h('tr', { class: estado.calc.sobreasignados.has(r.id) ? 'sobre' : '', title: estado.calc.sobreasignados.has(r.id) ? 'Sobreasignado: tiene más trabajo del que su capacidad permite en algún día' : '' },
       h('td', {}, h('input', { value: r.nombre, onchange: e => (r.nombre = e.target.value.trim()) })),
       h('td', {}, h('input', { value: r.iniciales || '', style: 'width:50px', onchange: e => (r.iniciales = e.target.value) })),
-      h('td', {}, h('select', { onchange: e => (r.tipo = e.target.value) }, [['trabajo', 'Trabajo'], ['material', 'Material'], ['costo', 'Costo']].map(([k, v]) => h('option', { value: k, selected: r.tipo === k }, v)))),
       h('td', {}, h('input', { type: 'number', value: Math.round((r.maxUnidades ?? 1) * 100), style: 'width:70px', onchange: e => (r.maxUnidades = Math.max(0, +e.target.value || 0) / 100) })),
-      h('td', {}, h('input', { type: 'number', step: 'any', value: r.tasaEstandar || 0, style: 'width:100px', onchange: e => (r.tasaEstandar = +e.target.value || 0) })),
-      h('td', {}, h('input', { type: 'number', step: 'any', value: r.costoPorUso || 0, style: 'width:90px', onchange: e => (r.costoPorUso = +e.target.value || 0) })),
       h('td', {}, h('input', { value: r.grupo || '', style: 'width:90px', onchange: e => (r.grupo = e.target.value) })),
       h('td', {}, h('input', { type: 'email', value: r.correo || '', onchange: e => (r.correo = e.target.value) })),
       h('td', {}, h('button', { type: 'button', title: 'Eliminar recurso', onclick: () => { lista.splice(i, 1); pintar(); } }, '✕')))),
-  ), h('button', { type: 'button', onclick: () => { lista.push({ id: nuevoId(), nombre: 'Recurso ' + (lista.length + 1), tipo: 'trabajo', maxUnidades: 1, tasaEstandar: 0, costoPorUso: 0 }); pintar(); } }, '＋ Agregar recurso'));
+  ), h('button', { type: 'button', onclick: () => { lista.push({ id: nuevoId(), nombre: 'Recurso ' + (lista.length + 1), tipo: 'trabajo', maxUnidades: 1 }); pintar(); } }, '＋ Agregar recurso'));
   pintar();
   const dlg = abrirDialogo('Hoja de recursos', contenedor, [
     h('button', { type: 'button', class: 'primario', onclick: () => {
@@ -1001,7 +987,6 @@ function dialogoProyecto() {
   const nombre = h('input', { value: p.nombre });
   const inicio = h('input', { type: 'date', value: p.inicio });
   const horas = h('input', { type: 'number', min: 1, max: 24, step: 'any', value: p.horasDia || 8 });
-  const moneda = h('input', { value: p.moneda || 'COP', maxLength: 3, style: 'width:70px' });
   const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map((n, i) => h('label', { class: 'chk' }, h('input', { type: 'checkbox', value: i, checked: p.diasLaborables.includes(i) }), n));
   const exc = p.excepciones.map(x => ({ ...x }));
   const tablaExc = h('div');
@@ -1015,7 +1000,7 @@ function dialogoProyecto() {
     h('button', { type: 'button', onclick: () => { exc.push({ id: nuevoId(), fecha: hoyISO(), nombre: 'Festivo', laborable: false }); pintar(); } }, '＋ Agregar festivo / excepción'));
   pintar();
   const dlg = abrirDialogo('Información del proyecto', [
-    h('div', { class: 'rejilla2' }, campo('Nombre', nombre), campo('Fecha de comienzo', inicio), campo('Horas por día', horas), campo('Moneda (código)', moneda)),
+    h('div', { class: 'rejilla2' }, campo('Nombre', nombre), campo('Fecha de comienzo', inicio), campo('Horas por día', horas)),
     h('h3', {}, 'Calendario: días laborables'), h('div', { class: 'dias' }, dias),
     h('h3', {}, 'Días festivos y excepciones'), tablaExc,
   ], [
@@ -1032,7 +1017,6 @@ function dialogoProyecto() {
         p.nombre = nombre.value.trim() || p.nombre;
         p.inicio = inicio.value || p.inicio;
         p.horasDia = +horas.value || 8;
-        p.moneda = (moneda.value || 'COP').toUpperCase();
         p.diasLaborables = dias.map(l => l.firstChild).filter(c => c.checked).map(c => +c.value);
         p.excepciones = exc.filter(x => x.fecha);
       });
@@ -1066,10 +1050,10 @@ function proyectoEjemplo(inicio) {
   const p = proyectoVacio('Lanzamiento de producto (ejemplo)', inicio);
   const T_ = (nombre, nivel, duracion = 1, extra = {}) => { const t = nuevaTareaObj({ nombre, nivel, duracion, ...extra }); p.tareas.push(t); return t.id; };
   const fs = (a, b, tipo = 'FS', retraso = 0) => p.dependencias.push({ id: nuevoId(), pred: a, succ: b, tipo, retraso });
-  const R_ = (nombre, tasa, max = 1) => { const r = { id: nuevoId(), nombre, iniciales: nombre.slice(0, 2).toUpperCase(), tipo: 'trabajo', maxUnidades: max, tasaEstandar: tasa, costoPorUso: 0 }; p.recursos.push(r); return r.id; };
+  const R_ = (nombre, max = 1) => { const r = { id: nuevoId(), nombre, iniciales: nombre.slice(0, 2).toUpperCase(), tipo: 'trabajo', maxUnidades: max }; p.recursos.push(r); return r.id; };
   const asg = (t, r, u = 1) => p.asignaciones.push({ id: nuevoId(), tarea: t, recurso: r, unidades: u });
 
-  const ana = R_('Ana', 45000), luis = R_('Luis', 38000), eq = R_('Equipo de diseño', 60000, 2);
+  const ana = R_('Ana'), luis = R_('Luis'), eq = R_('Equipo de diseño', 2);
   T_('Investigación de mercado', 1);
   const a1 = T_('Mercados de destino', 2, 5, { porcentaje: 100 });
   const a2 = T_('Clientes potenciales', 2, 4, { porcentaje: 60 });

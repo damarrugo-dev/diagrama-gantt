@@ -3,7 +3,7 @@
 // - Vínculos FC, CC, FF, CF con posposición/adelanto
 // - Restricciones (Lo antes posible, No comenzar antes de, Debe comenzar el, ...)
 // - Pasada hacia adelante y hacia atrás: holgura total y ruta crítica
-// - Trabajo, costo y sobreasignación de recursos
+// - Trabajo y sobreasignación de recursos
 import { Calendario } from './calendario.js';
 
 export const TIPOS_VINCULO = ['FS', 'SS', 'FF', 'SF'];
@@ -162,21 +162,17 @@ export function programar(proyecto) {
   }
   recalcResumenes('ls', 'lf');
 
-  // ---------- Recursos: trabajo, costo, sobreasignación ----------
+  // ---------- Recursos: trabajo y sobreasignación ----------
   const recPorId = new Map(recursos.map(r => [r.id, r]));
   const carga = new Map(); // recurso → Map(día → unidades)
-  for (const t of tareas) Object.assign(c.get(t.id), { trabajo: 0, costo: +t.costoFijo || 0, sobreasignada: false });
+  for (const t of tareas) Object.assign(c.get(t.id), { trabajo: 0, sobreasignada: false });
   for (const a of asignaciones) {
     const t = porId.get(a.tarea), r = recPorId.get(a.recurso);
     if (!t || !r || info.get(t.id).resumen) continue;
     const x = c.get(t.id), u = a.unidades ?? 1, d = dur(t);
-    if (r.tipo === 'material') {
-      x.costo += (r.tasaEstandar || 0) * u + (r.costoPorUso || 0);
-      continue;
-    }
+    if (r.tipo && r.tipo !== 'trabajo') continue;
     const horas = u * d * horasDia;
     x.trabajo += horas;
-    x.costo += horas * (r.tasaEstandar || 0) + (r.costoPorUso || 0);
     if (!carga.has(r.id)) carga.set(r.id, new Map());
     const m = carga.get(r.id);
     for (let i = x.s; i < x.e; i++) m.set(i, (m.get(i) || 0) + u);
@@ -196,7 +192,6 @@ export function programar(proyecto) {
   for (const t of resumenesAbajoArriba) {
     const x = c.get(t.id), hijos = info.get(t.id).hijos.map(h => ({ t: porId.get(h), x: c.get(h) }));
     x.trabajo = hijos.reduce((a, h) => a + h.x.trabajo, 0);
-    x.costo = (+t.costoFijo || 0) + hijos.reduce((a, h) => a + h.x.costo, 0);
     // % completado del resumen ponderado por duración
     const tot = hijos.reduce((a, h) => a + Math.max(1, h.x.e - h.x.s), 0);
     t.porcentaje = Math.round(hijos.reduce((a, h) => a + (h.t.porcentaje || 0) * Math.max(1, h.x.e - h.x.s), 0) / tot);

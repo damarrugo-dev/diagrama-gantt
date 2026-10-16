@@ -16,8 +16,8 @@ Es un sitio estático (`index.html`, `styles.css`, `js/`) que se publica gratis 
 | Fecha límite | ✔ (marca verde; roja si se incumple) |
 | Ruta crítica y margen de demora total | ✔ |
 | Calendario laboral (días laborables, festivos, horas por día) | ✔ |
-| Recursos de trabajo, material y costo; asignación con unidades (`Ana[50%]`) | ✔ |
-| Trabajo, costo (tasa estándar, costo por uso, costo fijo) y totales en resúmenes | ✔ |
+| Recursos y asignación con unidades (`Ana[50%]`) | ✔ |
+| Trabajo (horas) y totales en resúmenes | ✔ (sin costos: no se usan en este proyecto) |
 | Detección de recursos sobreasignados | ✔ |
 | % completado y barra de progreso | ✔ |
 | Línea base (todo el proyecto o tareas seleccionadas) | ✔ |
