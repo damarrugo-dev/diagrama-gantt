@@ -8,7 +8,8 @@ Es un sitio estático (`index.html`, `styles.css`, `js/`) que se publica gratis 
 
 | Microsoft Project | Aquí |
 | --- | --- |
-| Tareas, subtareas y tareas de resumen (sangría / anular sangría, contraer, EDT) | ✔ |
+| Épicas que agrupan tareas (botón *Épica*, sangría / anular sangría, EDT); contraer o expandir cada épica, *Solo épicas* para una vista limpia de tiempos | ✔ |
+| Vínculos entre tareas de épicas distintas (con la épica contraída, la flecha llega a su barra) | ✔ |
 | Hitos (duración 0) | ✔ |
 | Programación automática y manual | ✔ |
 | Vínculos FC, CC, FF, CF con posposición o adelanto (`5CC+2d`) | ✔ — en la columna *Predecesoras*, en el diálogo o arrastrando de una barra a otra |

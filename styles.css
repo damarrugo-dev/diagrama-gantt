@@ -13,6 +13,7 @@
   --critica: #e5484d;
   --critica-borde: #b9353a;
   --resumen: #2b2f3a;
+  --epica: #7c5cc4;
   --hito: #2b2f3a;
   --lb: #a3a9b5;
   --hoy: #d6409f;
@@ -23,7 +24,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --fondo: #16181d; --fondo-2: #1e2128; --borde: #2c313a; --borde-fuerte: #3b414d;
-    --texto: #e7e9ee; --texto-2: #9aa3b2; --sel: #24365c; --resumen: #d4d8e0; --hito: #d4d8e0;
+    --texto: #e7e9ee; --texto-2: #9aa3b2; --sel: #24365c; --resumen: #d4d8e0; --hito: #d4d8e0; --epica: #a58ce6;
     --nolab: #1b1e24; --lb: #6b7280; --progreso: #b8cbff;
     color-scheme: dark;
   }
@@ -103,6 +104,12 @@ select, input[type=search], input[type=email], input[type=date], input[type=numb
 .plegar { width: 16px; flex: none; border: 0; padding: 0; background: none; font-size: 11px; color: var(--texto-2); text-align: center; }
 .plegar:hover { background: none; color: var(--acento); }
 .fila.resumen input { font-weight: 700; }
+.fila.resumen { background: color-mix(in srgb, var(--epica) 7%, transparent); }
+.fila.resumen.sel { background: var(--sel); }
+.insignia {
+  flex: none; margin: 0 4px; padding: 1px 6px; border-radius: 9px; font-size: 10px; font-weight: 700;
+  letter-spacing: .3px; color: var(--epica); background: color-mix(in srgb, var(--epica) 14%, transparent);
+}
 .fila.critica .c-nombre input { color: var(--critica); }
 .fila.sel { background: var(--sel); }
 .fila.sel .c-id { background: var(--acento); color: #fff; }
@@ -127,8 +134,11 @@ select, input[type=search], input[type=email], input[type=date], input[type=numb
 .rayado-linea { stroke: var(--barra); stroke-width: 2; }
 .progreso { fill: var(--progreso); }
 .progreso-resumen { fill: var(--acento); }
-.resumen { fill: var(--resumen); }
+.resumen { fill: var(--epica); }
 .resumen.critica { fill: var(--critica); }
+.epica { fill: var(--epica); opacity: .85; }
+.epica.critica { fill: var(--critica); }
+.etiqueta-epica { fill: var(--epica); font-weight: 600; }
 .hito { fill: var(--hito); cursor: grab; }
 .hito.critica { fill: var(--critica); }
 .lb { fill: var(--lb); }

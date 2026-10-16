@@ -211,14 +211,14 @@ function insertar(extra) {
 }
 function insertarResumen() {
   const ids = seleccionOrdenada();
-  if (!ids.length) return insertar({ nombre: 'Nueva tarea de resumen' });
-  // Como Project: el resumen se inserta encima y las tareas seleccionadas pasan a ser sus subtareas
+  if (!ids.length) return insertar({ nombre: 'Nueva épica' });
+  // Como Project: la épica se inserta encima y las tareas seleccionadas pasan a ser sus tareas
   cambiar(p => {
     const i = p.tareas.findIndex(x => x.id === ids[0]);
     const [, fin] = bloque(ids[ids.length - 1]);
     const nivel = p.tareas[i].nivel;
     for (let k = i; k < fin; k++) p.tareas[k].nivel++;
-    p.tareas.splice(i, 0, nuevaTareaObj({ nombre: 'Nueva tarea de resumen', nivel }));
+    p.tareas.splice(i, 0, nuevaTareaObj({ nombre: 'Nueva épica', nivel }));
   });
 }
 function cambiarNivel(delta) {
@@ -279,7 +279,7 @@ function agregarVinculo(p, pred, succ, tipo = 'FS', retraso = 0) {
   if (pred === succ) return false;
   const info = estado.calc.info;
   if (ancestros(info, succ).includes(pred) || ancestros(info, pred).includes(succ)) {
-    aviso('No se puede vincular una tarea con su propia tarea de resumen.', true);
+    aviso('No se puede vincular una tarea con su propia épica.', true);
     return false;
   }
   if (p.dependencias.some(d => d.pred === pred && d.succ === succ)) return false;
@@ -569,7 +569,8 @@ function filaTabla(t) {
     }, h('option', { value: 'auto', selected: t.modo !== 'manual' }, '⚙'), h('option', { value: 'manual', selected: t.modo === 'manual' }, '✎'))),
     h('div', { class: 'celda c-nombre', style: `padding-left:${sangria + 4}px` },
       r.resumen ? h('button', { class: 'plegar', title: plegada ? 'Expandir' : 'Contraer', onclick: () => alternarPlegado(t.id) }, plegada ? '▸' : '▾') : h('span', { class: 'plegar' }),
-      entrada('nombre', t.nombre, { placeholder: '(sin nombre)' })),
+      entrada('nombre', t.nombre, { placeholder: '(sin nombre)' }),
+      r.resumen ? h('span', { class: 'insignia', title: 'Épica: agrupa tareas' }, plegada ? `ÉPICA · ${contarTareas(t.id)}` : 'ÉPICA') : null),
     h('div', { class: 'celda c-duracion' }, entrada('duracion', fmtDur(r.e - r.s, r.hito), { readOnly: r.resumen })),
     h('div', { class: 'celda c-comienzo' }, entrada('comienzo', r.comienzo, { type: 'date', readOnly: r.resumen })),
     h('div', { class: 'celda c-fin' }, entrada('fin', r.fin, { type: 'date', readOnly: r.resumen })),
@@ -596,6 +597,21 @@ function teclaCelda(e, id, col) {
     e.target.value = e.target.defaultValue;
     e.target.blur();
   }
+}
+
+// Cantidad de tareas (sin contar épicas) dentro de una épica
+function contarTareas(id) {
+  const info = estado.calc.info;
+  let n = 0;
+  const pila = [...info.get(id).hijos];
+  while (pila.length) { const x = pila.pop(); const i = info.get(x); i.resumen ? pila.push(...i.hijos) : n++; }
+  return `${n} tarea${n === 1 ? '' : 's'}`;
+}
+
+function plegarTodo(plegar) {
+  estado.plegadas = new Set(plegar ? estado.proyecto.tareas.filter(t => R(t.id).resumen).map(t => t.id) : []);
+  localStorage.setItem('gantt:plegadas:' + estado.proyecto.id, JSON.stringify([...estado.plegadas]));
+  render();
 }
 
 function alternarPlegado(id) {
@@ -744,9 +760,16 @@ function renderGrafico(visibles) {
 
   // Vínculos
   const gVin = s('g', { class: 'vinculos' });
-  for (const d of estado.proyecto.dependencias) {
+  // Si una tarea está dentro de una épica contraída, la flecha llega a la barra de la épica
+  const visible = id => [id, ...ancestros(estado.calc.info, id)].find(x => pos.has(x));
+  const dibujados = new Set();
+  for (const d0 of estado.proyecto.dependencias) {
+    const d = { ...d0, pred: visible(d0.pred), succ: visible(d0.succ) };
+    if (!d.pred || !d.succ || d.pred === d.succ) continue;
+    const clave = `${d.pred}>${d.succ}>${d.tipo}`;
+    if (dibujados.has(clave)) continue;
+    dibujados.add(clave);
     const a = pos.get(d.pred), b = pos.get(d.succ);
-    if (!a || !b) continue;
     const desdeFin = d.tipo === 'FS' || d.tipo === 'FF';
     const haciaIni = d.tipo === 'FS' || d.tipo === 'SS';
     const ax = desdeFin ? a.x2 : a.x1, bx = haciaIni ? b.x1 : b.x2;
@@ -781,9 +804,16 @@ function renderGrafico(visibles) {
     const critica = estado.verCritica && r.critica;
     if (r.resumen) {
       const yy = y + 8;
-      g.append(s('path', { d: `M${x1},${yy} H${x2} V${yy + 10} l-5,-5 H${x1 + 5} l-5,5 Z`, class: 'resumen' + (critica ? ' critica' : '') }, titulo));
       const xpct = x1 + (x2 - x1) * (t.porcentaje || 0) / 100;
-      if (t.porcentaje) g.append(s('rect', { x: x1, y: yy + 2, width: xpct - x1, height: 2, class: 'progreso-resumen' }));
+      if (estado.plegadas.has(t.id)) {
+        // Épica contraída: una sola barra gruesa con su avance
+        g.append(s('rect', { x: x1, y: y + 6, width: Math.max(2, x2 - x1), height: FILA - 12, rx: 3, class: 'epica' + (critica ? ' critica' : '') }, titulo));
+        if (t.porcentaje) g.append(s('rect', { x: x1, y: y + FILA / 2 - 2, width: xpct - x1, height: 4, class: 'progreso', 'pointer-events': 'none' }));
+      } else {
+        g.append(s('path', { d: `M${x1},${yy} H${x2} V${yy + 10} l-5,-5 H${x1 + 5} l-5,5 Z`, class: 'resumen' + (critica ? ' critica' : '') }, titulo));
+        if (t.porcentaje) g.append(s('rect', { x: x1, y: yy + 2, width: xpct - x1, height: 2, class: 'progreso-resumen' }));
+      }
+      g.append(s('text', { x: x2 + 8, y: y + FILA / 2 + 4, class: 'etiqueta etiqueta-epica' }, `${t.nombre} · ${fmtCorta(r.comienzo)} – ${fmtCorta(r.fin)}`));
     } else if (r.hito) {
       const yy = y + FILA / 2;
       g.append(s('path', { d: `M${x1},${yy - 7} l7,7 l-7,7 l-7,-7 z`, class: 'hito' + (critica ? ' critica' : ''), 'data-parte': 'mover' }, titulo));
@@ -1190,6 +1220,8 @@ const ACCIONES = {
   nuevaTarea: () => insertar({ nombre: 'Nueva tarea' }),
   nuevoHito: () => insertar({ nombre: 'Nuevo hito', duracion: 0 }),
   nuevoResumen: insertarResumen,
+  contraerTodo: () => plegarTodo(true),
+  expandirTodo: () => plegarTodo(false),
   sangria: () => cambiarNivel(1),
   anularSangria: () => cambiarNivel(-1),
   subir: () => mover(-1),
@@ -1221,7 +1253,6 @@ function conectarInterfaz() {
   $('#chkCritica').addEventListener('change', e => { estado.verCritica = prefs.verCritica = e.target.checked; guardarPrefs(); render(); });
   $('#chkLineaBase').checked = estado.verLineaBase;
   $('#chkLineaBase').addEventListener('change', e => { estado.verLineaBase = prefs.verLineaBase = e.target.checked; guardarPrefs(); render(); });
-  $('#selEsquema').addEventListener('change', e => { estado.nivelEsquema = e.target.value; render(); });
   $('#txtFiltro').addEventListener('input', e => { estado.filtro = e.target.value; render(); });
   $('#selProyecto').addEventListener('change', e => {
     if (e.target.value === '__nuevo') dialogoNuevoProyecto();
