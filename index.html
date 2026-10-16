@@ -5,7 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Diagrama de Gantt</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='2' width='8' height='3' fill='%232f6fed'/><rect x='5' y='7' width='9' height='3' fill='%23e5484d'/><rect x='3' y='12' width='6' height='3' fill='%2330a46c'/></svg>">
-  <link rel="stylesheet" href="styles.css">
+  <script>
+    // Siempre carga la última versión publicada (GitHub Pages deja los archivos en caché 10 minutos).
+    // Si se agrega un archivo .js nuevo, súmalo a esta lista.
+    (() => {
+      const v = Date.now();
+      const archivos = ['config.js', 'js/app.js', 'js/programador.js', 'js/calendario.js', 'js/almacen.js'];
+      const mapa = { imports: Object.fromEntries(archivos.map(f => [new URL(f, location.href).href, `${new URL(f, location.href).href}?v=${v}`])) };
+      const im = document.createElement('script');
+      im.type = 'importmap';
+      im.textContent = JSON.stringify(mapa);
+      document.currentScript.after(im);
+      const css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = `styles.css?v=${v}`;
+      im.after(css);
+    })();
+  </script>
 </head>
 <body>
   <header class="encabezado">
@@ -85,6 +101,6 @@
 
   <dialog id="dialogo"></dialog>
 
-  <script type="module" src="js/app.js"></script>
+  <script type="module">import './js/app.js';</script>
 </body>
 </html>
