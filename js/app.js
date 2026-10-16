@@ -283,9 +283,34 @@ function agregarVinculo(p, pred, succ, tipo = 'FS', retraso = 0) {
     return false;
   }
   if (p.dependencias.some(d => d.pred === pred && d.succ === succ)) return false;
+  if (creaCiclo(p, pred, succ)) {
+    aviso(`No se vinculó: la tarea ${numeroFila(pred)} ya depende de la tarea ${numeroFila(succ)} y quedaría en círculo.`, true);
+    return false;
+  }
   p.dependencias.push({ id: nuevoId(), pred, succ, tipo, retraso });
   return true;
 }
+// ¿Vincular pred → succ haría un círculo? (succ ya lleva, directa o indirectamente, a pred)
+function creaCiclo(p, pred, succ) {
+  const info = estado.calc.info;
+  const conHijos = id => {
+    const out = [id];
+    for (let i = 0; i < out.length; i++) out.push(...(info.get(out[i])?.hijos || []));
+    return out;
+  };
+  const visto = new Set();
+  const pila = conHijos(succ);
+  while (pila.length) {
+    const n = pila.pop();
+    if (visto.has(n)) continue;
+    visto.add(n);
+    if (n === pred || conHijos(pred).includes(n)) return true;
+    const fuentes = [n, ...ancestros(info, n)];
+    for (const d of p.dependencias) if (fuentes.includes(d.pred)) pila.push(...conHijos(d.succ));
+  }
+  return false;
+}
+
 function desvincular() {
   const ids = new Set(seleccionOrdenada());
   if (!ids.size) return aviso('Selecciona tareas para desvincular.');
@@ -365,8 +390,8 @@ function confirmarCelda(id, col, valor) {
       break;
     }
     case 'pred': {
-      const lista = parsePredecesoras(valor);
-      if (!lista) { aviso('Predecesoras no válidas. Ejemplo: 3;5CC+2d;7FF', true); return render(); }
+      const lista = parsePredecesoras(nombresAIds(valor));
+      if (!lista) { aviso('Escribe el Id de la tarea predecesora (el número de la columna Id), por ejemplo 3 o 3;5. También puedes elegirla de la lista.', true); return render(); }
       cambiar(() => {
         p.dependencias = p.dependencias.filter(d => d.succ !== id);
         for (const x of lista) {
@@ -393,6 +418,54 @@ function confirmarCelda(id, col, valor) {
       break;
   }
 }
+// Permite escribir el nombre de la tarea en lugar de su Id: "Etapa 1;3" → "6;3"
+function nombresAIds(texto) {
+  return String(texto || '').split(/[;,]/).map(parte => {
+    const x = parte.trim();
+    if (!x || /^\d/.test(x)) return x;
+    const i = estado.proyecto.tareas.findIndex(t => t.nombre.trim().toLowerCase() === x.toLowerCase());
+    return i >= 0 ? String(i + 1) : x;
+  }).filter(Boolean).join(';');
+}
+
+// Lista desplegable para elegir la tarea predecesora (como en Project)
+function selectorPredecesoras(input, id) {
+  let lista = null;
+  const cerrar = () => { lista?.remove(); lista = null; };
+  const mostrar = e => {
+    cerrar();
+    const partes = input.value.split(';');
+    // Al entrar en la celda se muestran todas; al escribir, se filtra por lo último escrito
+    const busca = e.type === 'input' ? partes[partes.length - 1].trim().toLowerCase() : '';
+    if (e.type !== 'input' && partes[partes.length - 1].trim()) partes.push('');
+    const yaEstan = new Set(estado.proyecto.dependencias.filter(d => d.succ === id).map(d => d.pred));
+    const info = estado.calc.info;
+    const opciones = estado.proyecto.tareas.filter(t => t.id !== id && !yaEstan.has(t.id)
+      && !ancestros(info, id).includes(t.id) && !ancestros(info, t.id).includes(id)
+      && !creaCiclo(estado.proyecto, t.id, id)
+      && (!busca || String(numeroFila(t.id)).startsWith(busca) || t.nombre.toLowerCase().includes(busca)));
+    if (!opciones.length) return;
+    const caja = input.getBoundingClientRect();
+    lista = h('div', { class: 'lista-pred', style: `left:${caja.left}px;top:${caja.bottom + 2}px` },
+      opciones.slice(0, 60).map(t => h('div', {
+        class: 'opcion' + (R(t.id).resumen ? ' resumen' : ''),
+        onmousedown: e => {
+          e.preventDefault();
+          partes[partes.length - 1] = String(numeroFila(t.id));
+          const valor = partes.map(x => x.trim()).filter(Boolean).join(';');
+          cerrar();
+          input.value = input.defaultValue = valor;
+          confirmarCelda(id, 'pred', valor);
+        },
+      }, h('b', {}, numeroFila(t.id)), ' ', t.nombre || '(sin nombre)')));
+    document.body.append(lista);
+  };
+  input.addEventListener('focus', mostrar);
+  input.addEventListener('input', mostrar);
+  input.addEventListener('blur', cerrar);
+  return input;
+}
+
 function asignarDesdeTexto(tareaId, texto) {
   const p = estado.proyecto;
   p.asignaciones = p.asignaciones.filter(a => a.tarea !== tareaId);
@@ -500,7 +573,7 @@ function filaTabla(t) {
     h('div', { class: 'celda c-duracion' }, entrada('duracion', fmtDur(r.e - r.s, r.hito), { readOnly: r.resumen })),
     h('div', { class: 'celda c-comienzo' }, entrada('comienzo', r.comienzo, { type: 'date', readOnly: r.resumen })),
     h('div', { class: 'celda c-fin' }, entrada('fin', r.fin, { type: 'date', readOnly: r.resumen })),
-    h('div', { class: 'celda c-pred' }, entrada('pred', predecesorasDe(t.id))),
+    h('div', { class: 'celda c-pred' }, selectorPredecesoras(entrada('pred', predecesorasDe(t.id), { placeholder: r.resumen ? '' : 'Elegir…', autocomplete: 'off' }), t.id)),
     h('div', { class: 'celda c-recursos' }, r.resumen ? '' : entrada('recursos', recursosDe(t.id), { list: 'listaRecursos' })),
     h('div', { class: 'celda c-pct' }, entrada('pct', (t.porcentaje || 0) + '%', { readOnly: r.resumen })),
     h('div', { class: 'celda c-trabajo num' }, fmtHoras(r.trabajo)),

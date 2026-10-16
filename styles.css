@@ -211,3 +211,14 @@ table.hoja tr.sobre td { background: color-mix(in srgb, var(--critica) 14%, tran
   .conector, .asa { display: none; }
   .pie { border: 0; background: none; }
 }
+
+/* Lista para elegir predecesoras */
+.lista-pred {
+  position: fixed; z-index: 20; min-width: 240px; max-width: 360px; max-height: 260px; overflow: auto;
+  background: var(--fondo); border: 1px solid var(--borde-fuerte); border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.18); padding: 4px 0;
+}
+.lista-pred .opcion { padding: 5px 10px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lista-pred .opcion:hover { background: var(--sel); }
+.lista-pred .opcion b { display: inline-block; min-width: 24px; color: var(--texto-2); }
+.lista-pred .opcion.resumen { font-weight: 600; }
