@@ -432,12 +432,15 @@ textarea { resize: vertical; }
 .divisor:hover { background: var(--acento); }
 
 /* Tabla */
-.fila { display: grid; height: 28px; border-bottom: 1px solid var(--borde); width: max-content; min-width: 100%; }
+.fila { display: grid; grid-template-columns: var(--columnas); height: 28px; border-bottom: 1px solid var(--borde); width: max-content; min-width: 100%; }
 .fila.cabecera {
   position: sticky; top: 0; z-index: 2; background: var(--fondo-2);
   font-weight: 600; font-size: 12px; border-bottom: 1px solid var(--borde-fuerte);
 }
-.fila.cabecera .celda { align-items: flex-end; padding-bottom: 6px; white-space: normal; line-height: 1.15; }
+.fila.cabecera .celda { align-items: flex-end; padding-bottom: 6px; white-space: normal; line-height: 1.15; position: relative; }
+.redim { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; z-index: 1; touch-action: none; }
+.redim:hover, body.redimensionando .redim:active { background: var(--acento); opacity: .35; }
+body.redimensionando, body.redimensionando * { cursor: col-resize !important; user-select: none; }
 .celda {
   display: flex; align-items: center; border-right: 1px solid var(--borde);
   padding: 0 4px; overflow: hidden; white-space: nowrap; min-width: 0;

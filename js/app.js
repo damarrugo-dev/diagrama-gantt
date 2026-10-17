@@ -558,17 +558,39 @@ const COLUMNAS = [
   { k: 'trabajo', t: 'Trabajo', w: 72 },
   { k: 'holgura', t: 'Margen total', w: 84 },
 ];
-const plantillaColumnas = COLUMNAS.map(c => c.w + 'px').join(' ');
+// Ancho de cada columna: el que dejó la persona arrastrando el borde del encabezado (se guarda en este navegador)
+const anchoColumna = c => prefs.anchos?.[c.k] || c.w;
+const aplicarAnchos = () => $('#panelTabla').style.setProperty('--columnas', COLUMNAS.map(c => anchoColumna(c) + 'px').join(' '));
+
+function redimensionarColumna(e, c) {
+  e.preventDefault(); e.stopPropagation();
+  const x0 = e.clientX, w0 = anchoColumna(c);
+  document.body.classList.add('redimensionando');
+  const mover = ev => { (prefs.anchos ||= {})[c.k] = Math.max(28, Math.min(800, Math.round(w0 + ev.clientX - x0))); aplicarAnchos(); };
+  const fin = () => {
+    window.removeEventListener('pointermove', mover); window.removeEventListener('pointerup', fin);
+    document.body.classList.remove('redimensionando'); guardarPrefs();
+  };
+  window.addEventListener('pointermove', mover);
+  window.addEventListener('pointerup', fin);
+}
+function anchoOriginal(c) {
+  if (prefs.anchos) delete prefs.anchos[c.k];
+  guardarPrefs(); aplicarAnchos();
+}
 
 function renderTabla(visibles) {
   const panel = $('#panelTabla');
   const scroll = panel.scrollTop, scrollX = panel.scrollLeft;
-  const cab = h('div', { class: 'fila cabecera', style: `grid-template-columns:${plantillaColumnas};height:${ENCABEZADO}px` },
-    COLUMNAS.map(c => h('div', { class: 'celda c-' + c.k }, c.t)));
+  aplicarAnchos();
+  const cab = h('div', { class: 'fila cabecera', style: `height:${ENCABEZADO}px` },
+    COLUMNAS.map(c => h('div', { class: 'celda c-' + c.k }, c.t,
+      h('span', { class: 'redim', title: 'Arrastra para cambiar el ancho (doble clic: ancho original)',
+        onpointerdown: e => redimensionarColumna(e, c), ondblclick: () => anchoOriginal(c) }))));
   const cuerpo = h('div', { class: 'cuerpo' });
   for (const t of visibles) cuerpo.append(filaTabla(t));
   // Fila vacía para escribir una tarea nueva, como en Project
-  cuerpo.append(h('div', { class: 'fila nueva', style: `grid-template-columns:${plantillaColumnas}` },
+  cuerpo.append(h('div', { class: 'fila nueva' },
     h('div', { class: 'celda c-ind' }), h('div', { class: 'celda c-id' }), h('div', { class: 'celda c-modo' }),
     h('div', { class: 'celda c-nombre' }, h('input', {
       placeholder: 'Escribe una tarea nueva…', 'data-celda': 'nueva:nombre',
@@ -591,7 +613,7 @@ function filaTabla(t) {
   const r = R(t.id);
   const sel = estado.sel.has(t.id);
   const clase = ['fila', sel && 'sel', r.resumen && 'resumen', estado.verCritica && r.critica && !r.resumen && 'critica'].filter(Boolean).join(' ');
-  const fila = h('div', { class: clase, style: `grid-template-columns:${plantillaColumnas}`, 'data-id': t.id });
+  const fila = h('div', { class: clase, 'data-id': t.id });
   const seleccionar = e => seleccionarFila(t.id, e);
 
   const entrada = (col, valor, attrs = {}) => h('input', {
