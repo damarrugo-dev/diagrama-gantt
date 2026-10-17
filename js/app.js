@@ -1,7 +1,8 @@
-import { firebaseConfig, login, supabaseUrl, supabaseAnonKey } from '../config.js';
 import { programar, parsePredecesoras, textoPredecesoras, ancestros, RESTRICCIONES, NOMBRE_VINCULO, TIPOS_VINCULO } from './programador.js';
 import { parseISO, addDaysISO, toISO } from './calendario.js';
-import { AlmacenLocal, AlmacenSupabase, AlmacenFirebase, nuevoId, proyectoVacio } from './almacen.js';
+import { AlmacenLocal, AlmacenFirebase, nuevoId, proyectoVacio } from './almacen.js';
+import { showMenu, confirmDlg } from './util.js';
+import * as enlaces from './enlaces.js';
 
 // ---------- Utilidades ----------
 const $ = (s, el = document) => el.querySelector(s);
@@ -128,8 +129,10 @@ function aviso(texto, error = false) {
 
 // ---------- Cambios con deshacer ----------
 const instantanea = () => JSON.stringify(estado.proyecto);
-function cambiar(fn) {
+// sinEnlaces: el cambio viene del Kanban, así que no se le devuelve
+function cambiar(fn, { sinEnlaces = false } = {}) {
   const antes = instantanea();
+  const firmaAntes = enlaces.firma(estado.proyecto);
   const r = fn(estado.proyecto);
   if (instantanea() === antes) { render(); return r; }
   estado.deshacer.push(antes);
@@ -138,19 +141,24 @@ function cambiar(fn) {
   recalcular();
   render();
   guardarPronto();
+  if (!sinEnlaces) enlaces.alCambiarGantt(estado.proyecto.id, firmaAntes, enlaces.firma(estado.proyecto));
   return r;
 }
 function deshacer() {
   if (!estado.deshacer.length) return aviso('No hay nada que deshacer.');
+  const firmaAntes = enlaces.firma(estado.proyecto);
   estado.rehacer.push(instantanea());
   estado.proyecto = JSON.parse(estado.deshacer.pop());
   recalcular(); render(); guardarPronto();
+  enlaces.alCambiarGantt(estado.proyecto.id, firmaAntes, enlaces.firma(estado.proyecto));
 }
 function rehacer() {
   if (!estado.rehacer.length) return aviso('No hay nada que rehacer.');
+  const firmaAntes = enlaces.firma(estado.proyecto);
   estado.deshacer.push(instantanea());
   estado.proyecto = JSON.parse(estado.rehacer.pop());
   recalcular(); render(); guardarPronto();
+  enlaces.alCambiarGantt(estado.proyecto.id, firmaAntes, enlaces.firma(estado.proyecto));
 }
 
 function recalcular() {
@@ -546,6 +554,7 @@ const COLUMNAS = [
   { k: 'pred', t: 'Predecesoras', w: 104 },
   { k: 'recursos', t: 'Nombres de los recursos', w: 170 },
   { k: 'pct', t: '% compl.', w: 64 },
+  { k: 'kanban', t: 'Kanban', w: 104 },
   { k: 'trabajo', t: 'Trabajo', w: 72 },
   { k: 'holgura', t: 'Margen total', w: 84 },
 ];
@@ -619,10 +628,30 @@ function filaTabla(t) {
     h('div', { class: 'celda c-pred' }, selectorPredecesoras(entrada('pred', predecesorasDe(t.id), { placeholder: r.resumen ? '' : 'Elegir…', autocomplete: 'off' }), t.id)),
     h('div', { class: 'celda c-recursos' }, r.resumen ? '' : entrada('recursos', recursosDe(t.id), { list: 'listaRecursos' })),
     h('div', { class: 'celda c-pct' }, entrada('pct', (t.porcentaje || 0) + '%', { readOnly: r.resumen })),
+    h('div', { class: 'celda c-kanban' }, celdaKanban(t, r)),
     h('div', { class: 'celda c-trabajo num' }, fmtHoras(r.trabajo)),
     h('div', { class: 'celda c-holgura num' }, fmtDur(Math.max(0, r.holgura))),
   );
   return fila;
+}
+
+// Celda "Kanban": la tarjeta enlazada (o el botón para enlazar)
+function celdaKanban(t, r) {
+  if (t.kanban) {
+    const info = enlaces.textoTarjeta(t.kanban);
+    return h('button', { type: 'button', class: 'chip-kanban', title: info.titulo + '\nClic: opciones', onclick: e => menuKanban(t, e.currentTarget) }, h('span', {}, '▥'), info.texto);
+  }
+  if (r.resumen) return '';
+  return h('button', { type: 'button', class: 'enlazar-kanban', title: 'Enlazar con una tarjeta del Kanban', onclick: () => enlaces.dialogoEnlazarTarea(estado.proyecto.id, t.id) }, '＋');
+}
+function menuKanban(t, ancla) {
+  const enlace = { ...t.kanban, proyecto: estado.proyecto.id, tarea: t.id };
+  showMenu(ancla, [
+    { label: '▥ Abrir la tarjeta en el Kanban', action: () => enlaces.abrirTarjeta(enlace) },
+    { label: '⛓ Desenlazar', danger: true, action: async () => {
+      if (await confirmDlg('¿Quitar el enlace con el Kanban?', 'La tarea y la tarjeta se conservan; solo dejan de actualizarse entre sí.', 'Quitar enlace')) enlaces.desenlazar(enlace);
+    } },
+  ]);
 }
 
 function teclaCelda(e, id, col) {
@@ -1071,6 +1100,18 @@ function dialogoTarea(id) {
       h('div', { class: 'campo' }, h('span', {}, 'EDT'), h('div', {}, r.edt)),
       h('div', { class: 'campo' }, h('span', {}, 'Margen total'), h('div', {}, fmtDur(Math.max(0, r.holgura)) + (r.critica ? ' · en la ruta crítica' : '')))),
     Notas: f.notas,
+    Kanban: h('div', { class: 'pestana-kanban' },
+      t.kanban
+        ? [h('p', {}, 'Esta tarea está enlazada con una tarjeta del Kanban. El nombre y el % completado se mantienen iguales en los dos lados.'),
+            h('p', {}, h('button', { type: 'button', class: 'chip-kanban grande', onclick: () => { dlg.close(); enlaces.abrirTarjeta({ ...t.kanban, proyecto: p.id, tarea: id }); } }, '▥ ', enlaces.textoTarjeta(t.kanban).titulo.split('\n')[0], ' · Abrir en el Kanban')),
+            h('button', { type: 'button', class: 'peligro', onclick: async () => {
+              dlg.close();
+              if (await confirmDlg('¿Quitar el enlace con el Kanban?', 'La tarea y la tarjeta se conservan; solo dejan de actualizarse entre sí.', 'Quitar enlace')) enlaces.desenlazar({ ...t.kanban, proyecto: p.id, tarea: id });
+            } }, 'Desenlazar…')]
+        : r.resumen
+          ? h('p', {}, 'Las épicas no se enlazan con tarjetas: enlaza sus tareas.')
+          : [h('p', {}, 'Esta tarea vive solo en el Gantt. Puedes crearle una tarjeta en el Kanban o enlazarla con una que ya exista.'),
+              h('button', { type: 'button', class: 'primario', onclick: () => { dlg.close(); enlaces.dialogoEnlazarTarea(p.id, id); } }, 'Enlazar con el Kanban…')]),
   };
   const cuerpo = h('div', { class: 'pestanas-cuerpo' });
   const barra = h('div', { class: 'pestanas' });
@@ -1231,10 +1272,11 @@ function proyectoEjemplo(inicio) {
 async function pintarSelector() {
   const sel = $('#selProyecto');
   const lista = await estado.almacen.listar();
-  sel.replaceChildren(
+  sel.replaceChildren(...[
     ...lista.map(x => h('option', { value: x.id, selected: estado.proyecto?.id === x.id }, x.id === estado.proyecto?.id ? estado.proyecto.nombre : x.nombre)),
     h('option', { value: '__nuevo' }, '＋ Proyecto nuevo…'),
-  );
+    estado.almacen.modo === 'firebase' ? h('option', { value: '__migrar' }, '⇪ Traer proyectos del Gantt anterior…') : null,
+  ].filter(Boolean));
 }
 async function abrirProyecto(id) {
   if (estado.proyecto && temporizador) await guardarYa();
@@ -1246,12 +1288,13 @@ async function abrirProyecto(id) {
   try { estado.plegadas = new Set(JSON.parse(localStorage.getItem('gantt:plegadas:' + id)) || []); } catch { estado.plegadas = new Set(); }
   prefs.ultimo = id; guardarPrefs();
   const url = new URL(location.href); url.searchParams.set('proyecto', id); history.replaceState(null, '', url);
-  document.title = `${p.nombre} · Diagrama de Gantt`;
+  if (visible) document.title = `${p.nombre} · Diagrama de Gantt`;
   recalcular();
   await pintarSelector();
   render();
   ponerEstado(estado.almacen.modo === 'local' ? 'Modo de prueba' : 'Guardado');
   requestAnimationFrame(() => desplazarA(addDaysISO(estado.calc.comienzo, -3)));
+  enlaces.alAbrirProyecto(p);
 }
 async function iniciarProyectos() {
   let lista = await estado.almacen.listar();
@@ -1307,7 +1350,10 @@ function conectarInterfaz() {
   $('#chkLineaBase').addEventListener('change', e => { estado.verLineaBase = prefs.verLineaBase = e.target.checked; guardarPrefs(); render(); });
   $('#txtFiltro').addEventListener('input', e => { estado.filtro = e.target.value; render(); });
   $('#selProyecto').addEventListener('change', e => {
-    if (e.target.value === '__nuevo') dialogoNuevoProyecto();
+    if (e.target.value === '__migrar') {
+      e.target.value = estado.proyecto?.id || '';
+      import('./migrar.js').then(m => m.dialogoMigrar(estado.almacen, id => abrirProyecto(id)));
+    } else if (e.target.value === '__nuevo') dialogoNuevoProyecto();
     else abrirProyecto(e.target.value);
   });
 
@@ -1333,7 +1379,7 @@ function conectarInterfaz() {
   });
 
   document.addEventListener('keydown', e => {
-    if (!estado.proyecto || $('#dialogo').open) return;
+    if (!visible || !estado.proyecto || document.querySelector('dialog[open]')) return;
     const enCampo = /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName);
     const k = e.key;
     if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'z' && !enCampo) { e.preventDefault(); deshacer(); }
@@ -1346,202 +1392,56 @@ function conectarInterfaz() {
     else if (k === 'Insert') { e.preventDefault(); ACCIONES.nuevaTarea(); }
     else if (k === 'Delete' && !enCampo) { e.preventDefault(); eliminar(); }
   });
-  window.addEventListener('resize', () => estado.proyecto && render());
+  window.addEventListener('resize', () => visible && estado.proyecto && render());
   window.addEventListener('beforeprint', () => render());
 }
 
 // ---------- Arranque ----------
-async function arrancar() {
+let visible = false;
+export async function iniciarGantt(ses) {
   conectarInterfaz();
-  if (firebaseConfig) return arrancarFirebase();
-  if (!supabaseUrl || !supabaseAnonKey) {
-    estado.almacen = new AlmacenLocal();
-    return iniciarProyectos();
-  }
-  ponerEstado('Conectando…');
-  const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm');
-  const sb = createClient(supabaseUrl, supabaseAnonKey);
-  estado.almacen = new AlmacenSupabase(sb);
-  const entrar = async sesion => {
-    $('#pantallaLogin').hidden = true;
-    $('#usuario').replaceChildren(sesion.user.email, ' ', h('button', { onclick: async () => { await sb.auth.signOut(); location.reload(); } }, 'Salir'));
-    try { await iniciarProyectos(); } catch (e) { ponerEstado('Error al cargar: ' + e.message, true); }
-  };
-  const { data } = await sb.auth.getSession();
-  if (data.session) return entrar(data.session);
-  ponerEstado('');
-  $('#pantallaLogin').hidden = false;
-  $('#formLogin').addEventListener('submit', async e => {
-    e.preventDefault();
-    const correo = $('#correoLogin').value.trim();
-    $('#msgLogin').textContent = 'Enviando…';
-    const { error } = await sb.auth.signInWithOtp({ email: correo, options: { emailRedirectTo: location.origin + location.pathname } });
-    $('#msgLogin').textContent = error ? 'No se pudo enviar: ' + error.message : `Listo. Revisa ${correo} y abre el enlace.`;
-  });
-  let dentro = false;
-  sb.auth.onAuthStateChange((evento, sesion) => {
-    if (sesion && !dentro) { dentro = true; entrar(sesion); }
-  });
+  estado.almacen = ses.modo === 'firebase' ? new AlmacenFirebase(ses.fs, ses.db, ses.correo) : new AlmacenLocal();
+  try { await iniciarProyectos(); } catch (e) { console.error(e); ponerEstado('Error al cargar: ' + e.message, true); }
 }
 
-// Firebase: entra con un enlace al correo (solo correos de login.dominios), como en el tablero Kanban
-async function arrancarFirebase() {
-  ponerEstado('Conectando…');
-  const V = '10.12.2';
-  const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
-  const fs = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
-  const au = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
-  const app = initializeApp(firebaseConfig);
-  const db = fs.getFirestore(app);
-  const auth = au.getAuth(app);
-  const dominios = (login?.dominios || []).map(d => d.toLowerCase().replace(/^@/, ''));
-  const permitido = correo => !dominios.length || dominios.some(d => (correo || '').toLowerCase().endsWith('@' + d));
-  const textoDominios = dominios.map(d => '@' + d).join(' o ');
-  const CLAVE = 'gantt:correo-para-entrar';
-  const msg = t => ($('#msgLogin').textContent = t);
-  registroAccesos = crearRegistroAccesos(fs, db);
-  if (dominios.length) $('#formLogin p').textContent = `Escribe tu correo ${textoDominios} y te llegará un enlace para entrar.`;
-
-  // Volvió desde el enlace del correo
-  if (au.isSignInWithEmailLink(auth, location.href)) {
-    let correo = '';
-    try { correo = localStorage.getItem(CLAVE) || ''; } catch {}
-    if (!correo) correo = prompt('Escribe el mismo correo al que llegó el enlace:') || '';
-    try {
-      await au.signInWithEmailLink(auth, correo, location.href);
-      try { localStorage.removeItem(CLAVE); } catch {}
-    } catch (e) {
-      console.error(e);
-      msg('El enlace ya se usó o venció. Pide uno nuevo.');
-    }
-    const limpia = new URL(location.href);
-    for (const k of [...limpia.searchParams.keys()]) if (k !== 'proyecto') limpia.searchParams.delete(k);
-    history.replaceState(null, '', limpia.href);
-  }
-  $('#formLogin').addEventListener('submit', async e => {
-    e.preventDefault();
-    const correo = $('#correoLogin').value.trim().toLowerCase();
-    if (!permitido(correo)) {
-      registroAccesos.anotar('rechazado', correo);
-      return msg(`Usa tu correo ${textoDominios}.`);
-    }
-    msg('Enviando…');
-    try {
-      await au.sendSignInLinkToEmail(auth, correo, { url: location.origin + location.pathname, handleCodeInApp: true });
-      registroAccesos.anotar('solicitud', correo);
-      try { localStorage.setItem(CLAVE, correo); } catch {}
-      msg(`Listo. Revisa ${correo} (también la carpeta de spam) y abre el enlace en este mismo dispositivo.`);
-    } catch (err) {
-      msg('No se pudo enviar el enlace: ' + (err.message || err.code));
-    }
-  });
-
-  await auth.authStateReady();
-  let dentro = false;
-  au.onAuthStateChanged(auth, async usuario => {
-    if (usuario && permitido(usuario.email)) {
-      if (dentro) return;
-      dentro = true;
-      $('#pantallaLogin').hidden = true;
-      $('#usuario').replaceChildren(
-        esAdministrador(usuario.email) ? h('button', { onclick: dialogoAccesos, title: 'Quién pidió el enlace y quién entró' }, 'Accesos') : '',
-        usuario.email, ' ', h('button', { onclick: async () => { await au.signOut(auth); location.reload(); } }, 'Salir'));
-      registroAccesos.anotarIngreso(usuario);
-      estado.almacen = new AlmacenFirebase(fs, db, usuario.email);
-      try { await iniciarProyectos(); } catch (e) { ponerEstado('Error al cargar: ' + e.message, true); }
-      return;
-    }
-    ponerEstado('');
-    $('#pantallaLogin').hidden = false;
-    if (usuario) { msg(`La cuenta ${usuario.email || ''} no tiene acceso. Entra con tu correo ${textoDominios}.`); au.signOut(auth); }
-  });
+// La vista Gantt se muestra u oculta (el Kanban vive en la misma página)
+export function mostrarGantt(si) {
+  visible = si;
+  if (!si || !estado.proyecto) return;
+  document.title = `${estado.proyecto.nombre} · Diagrama de Gantt`;
+  const url = new URL(location.href); url.searchParams.set('proyecto', estado.proyecto.id); history.replaceState(null, '', url);
+  render();
 }
 
-// ---------- Control de acceso (igual que en el tablero Kanban) ----------
-// Guarda en Firestore (colección "accesos") quién pide el enlace, quién entra y quién es rechazado.
-// Solo los administradores de config.js (login.administradores) ven el registro.
-let registroAccesos = { anotar() {}, anotarIngreso() {}, listar: async () => [] };
-const esAdministrador = correo => (login?.administradores || []).map(a => a.toLowerCase()).includes((correo || '').toLowerCase());
-const TEXTO_EVENTO = { solicitud: 'Pidió el enlace', ingreso: 'Entró al diagrama', rechazado: 'Rechazado (correo no permitido)' };
-
-function crearRegistroAccesos(fs, db) {
-  const col = fs.collection(db, 'accesos');
-  const navegador = () => {
-    const ua = navigator.userAgent;
-    const equipo = /Mobi|Android|iPhone|iPad/i.test(ua) ? 'Celular' : 'Computador';
-    const nombre = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Otro';
-    return `${equipo} · ${nombre}`;
-  };
-  const escribir = (tipo, correo) => fs.addDoc(col, { tipo, email: (correo || '').toLowerCase().slice(0, 200), navegador: navegador(), fecha: fs.serverTimestamp() })
-    .catch(e => console.warn('No se pudo registrar el acceso', e));
-  return {
-    anotar: escribir,
-    // Una vez por visita (pestaña abierta), no en cada recarga
-    anotarIngreso(usuario) {
-      const clave = 'gantt:ingreso-registrado';
-      try { if (sessionStorage.getItem(clave) === usuario.uid) return; sessionStorage.setItem(clave, usuario.uid); } catch {}
-      escribir('ingreso', usuario.email);
-    },
-    async listar() {
-      const snap = await fs.getDocs(fs.query(col, fs.orderBy('fecha', 'desc'), fs.limit(1000)));
-      return snap.docs.map(d => { const x = d.data(); return { ...x, fecha: x.fecha?.toDate?.() || null }; });
-    },
-  };
-}
-
-async function dialogoAccesos() {
-  const cuerpo = h('div', {}, 'Cargando…');
-  const dlg = abrirDialogo('Control de acceso', cuerpo, [h('button', { type: 'button', class: 'primario', onclick: () => dlg.close() }, 'Cerrar')]);
-  let filas;
-  try { filas = await registroAccesos.listar(); }
-  catch (e) {
-    console.error(e);
-    cuerpo.textContent = 'No se pudo leer el registro. Revisa que las reglas de Firestore estén publicadas.';
-    return;
-  }
-  const fmt = f => f ? f.toLocaleString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
-
-  // Resumen por persona
-  const personas = new Map();
-  for (const r of filas) {
-    const x = personas.get(r.email) || { email: r.email, solicitudes: 0, ingresos: 0, rechazos: 0, primero: null, ultimo: null };
-    if (r.tipo === 'solicitud') x.solicitudes++;
-    if (r.tipo === 'rechazado') x.rechazos++;
-    if (r.tipo === 'ingreso') {
-      x.ingresos++;
-      if (r.fecha && (!x.ultimo || r.fecha > x.ultimo)) x.ultimo = r.fecha;
-      if (r.fecha && (!x.primero || r.fecha < x.primero)) x.primero = r.fecha;
-    }
-    personas.set(r.email, x);
-  }
-  const resumen = [...personas.values()].sort((a, b) => (b.ultimo || 0) - (a.ultimo || 0));
-
-  let pestana = 'personas';
-  const pintar = () => cuerpo.replaceChildren(
-    h('div', { class: 'pestanas' },
-      h('button', { type: 'button', class: pestana === 'personas' ? 'activa' : '', onclick: () => { pestana = 'personas'; pintar(); } }, `Personas (${resumen.length})`),
-      h('button', { type: 'button', class: pestana === 'eventos' ? 'activa' : '', onclick: () => { pestana = 'eventos'; pintar(); } }, `Movimientos (${filas.length})`),
-      h('span', { class: 'espacio' }),
-      h('button', { type: 'button', onclick: () => exportarAccesos(filas) }, '⭳ Exportar')),
-    pestana === 'personas'
-      ? h('table', { class: 'mini accesos' },
-          h('thead', {}, h('tr', {}, ['Correo', 'Pidió enlace', 'Entradas', 'Primera entrada', 'Última entrada'].map(t => h('th', {}, t)))),
-          h('tbody', {}, resumen.map(x => h('tr', { class: x.rechazos && !x.ingresos ? 'rechazado' : '' },
-            h('td', {}, x.email), h('td', {}, x.solicitudes + (x.rechazos ? ` (${x.rechazos} rechazado)` : '')),
-            h('td', {}, x.ingresos), h('td', {}, fmt(x.primero)), h('td', {}, fmt(x.ultimo))))))
-      : h('table', { class: 'mini accesos' },
-          h('thead', {}, h('tr', {}, ['Fecha', 'Correo', 'Qué pasó', 'Dispositivo'].map(t => h('th', {}, t)))),
-          h('tbody', {}, filas.map(r => h('tr', { class: r.tipo === 'rechazado' ? 'rechazado' : '' },
-            h('td', {}, fmt(r.fecha)), h('td', {}, r.email), h('td', {}, TEXTO_EVENTO[r.tipo] || r.tipo), h('td', {}, r.navegador || '—'))))),
-    filas.length ? '' : h('p', { class: 'nota' }, 'Todavía no hay registros.'));
-  pintar();
-}
-
-function exportarAccesos(filas) {
-  const salida = [['Fecha', 'Correo', 'Qué pasó', 'Dispositivo']];
-  for (const r of filas) salida.push([r.fecha ? r.fecha.toLocaleString('es-CO') : '', r.email, TEXTO_EVENTO[r.tipo] || r.tipo, r.navegador || '']);
-  const csv = salida.map(f => f.map(v => /[";\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v).join(';')).join('\r\n');
-  descargar(`accesos-${new Date().toISOString().slice(0, 10)}.csv`, '﻿' + csv, 'text/csv;charset=utf-8');
-}
-
-arrancar().catch(e => { console.error(e); ponerEstado('Error: ' + e.message, true); });
+// ---------- Lo que necesitan los enlaces con el Kanban ----------
+const completar = p => { for (const k of ['excepciones', 'tareas', 'dependencias', 'recursos', 'asignaciones']) p[k] ||= []; return p; };
+export const ganttApi = {
+  redibujar: () => { if (visible && estado.proyecto) render(); },
+  listarProyectos: () => estado.almacen.listar(),
+  async leerProyecto(id) {
+    if (estado.proyecto?.id === id) return { p: estado.proyecto, calc: estado.calc };
+    const p = await estado.almacen.cargar(id);
+    if (!p) return null;
+    return { p: completar(p), calc: programar(p) };
+  },
+  // Cambia un proyecto: el abierto pasa por "cambiar" (con deshacer); otro se carga, se cambia y se guarda
+  async modificarProyecto(id, fn) {
+    if (estado.proyecto?.id === id) { cambiar(fn, { sinEnlaces: true }); return; }
+    const p = await estado.almacen.cargar(id);
+    if (!p) throw new Error('No se encontró el proyecto del Gantt.');
+    fn(completar(p));
+    await estado.almacen.guardar(p);
+  },
+  async abrirTarea(proyecto, tarea) {
+    if (estado.proyecto?.id !== proyecto) await abrirProyecto(proyecto);
+    if (estado.proyecto?.id !== proyecto) return aviso('No tienes acceso a ese proyecto.', true);
+    if (!T(tarea)) return aviso('La tarea ya no existe.', true);
+    // Se despliegan sus épicas para que se vea
+    for (const a of ancestros(estado.calc.info, tarea)) estado.plegadas.delete(a);
+    estado.filtro = ''; $('#txtFiltro').value = '';
+    estado.sel = new Set([tarea]);
+    render();
+    desplazarA(addDaysISO(R(tarea).comienzo, -3));
+    document.querySelector(`#panelTabla [data-id="${tarea}"]`)?.scrollIntoView({ block: 'center' });
+  },
+};

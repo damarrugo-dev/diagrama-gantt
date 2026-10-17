@@ -3,14 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Diagrama de Gantt</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='2' width='8' height='3' fill='%232f6fed'/><rect x='5' y='7' width='9' height='3' fill='%23e5484d'/><rect x='3' y='12' width='6' height='3' fill='%2330a46c'/></svg>">
+  <title>Planeación</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23c8102e'/><rect x='5' y='7' width='13' height='4' rx='1.5' fill='white'/><rect x='10' y='14' width='16' height='4' rx='1.5' fill='white'/><rect x='7' y='21' width='10' height='4' rx='1.5' fill='white'/></svg>">
+  <script>try { if (localStorage.getItem('kanban:tema') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch {}</script>
   <script>
     // Siempre carga la última versión publicada (GitHub Pages deja los archivos en caché 10 minutos).
     // Si se agrega un archivo .js nuevo, súmalo a esta lista.
     (() => {
       const v = Date.now();
-      const archivos = ['config.js', 'js/app.js', 'js/programador.js', 'js/calendario.js', 'js/almacen.js'];
+      const archivos = ['config.js', 'js/principal.js', 'js/app.js', 'js/programador.js', 'js/calendario.js', 'js/almacen.js',
+        'js/util.js', 'js/sesion.js', 'js/enlaces.js', 'js/migrar.js', 'kanban/kanban.js'];
       const mapa = { imports: Object.fromEntries(archivos.map(f => [new URL(f, location.href).href, `${new URL(f, location.href).href}?v=${v}`])) };
       const im = document.createElement('script');
       im.type = 'importmap';
@@ -22,17 +24,36 @@
       im.after(css);
     })();
   </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 </head>
 <body>
-  <header class="encabezado">
-    <div class="marca">Diagrama de Gantt</div>
-    <select id="selProyecto" title="Proyecto"></select>
-    <span id="estadoGuardado" class="estado"></span>
+  <header class="topbar">
+    <div class="marca"><span class="marca-icono" aria-hidden="true"></span>Planeación</div>
+    <div class="interruptor" role="group" aria-label="Vista">
+      <button id="ver-gantt" type="button" aria-pressed="true" title="Diagrama de Gantt">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="2" width="8" height="3" rx="1"/><rect x="5" y="6.5" width="9" height="3" rx="1"/><rect x="3" y="11" width="6" height="3" rx="1"/></svg>Gantt
+      </button>
+      <button id="ver-kanban" type="button" aria-pressed="false" title="Tablero Kanban">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="1" width="4" height="9" rx="1"/><rect x="6" y="1" width="4" height="14" rx="1"/><rect x="11" y="1" width="4" height="6" rx="1"/></svg>Kanban
+      </button>
+    </div>
+    <div class="contexto" data-de="gantt">
+      <select id="selProyecto" title="Proyecto" aria-label="Proyecto"></select>
+      <span id="estadoGuardado" class="estado"></span>
+    </div>
+    <div class="contexto" data-de="kanban" hidden>
+      <select id="selTablero" title="Tablero" aria-label="Tablero"></select>
+    </div>
     <span class="espacio"></span>
-    <span id="usuario" class="usuario"></span>
+    <button id="accessBtn" class="btn" hidden>Accesos</button>
+    <button id="themeBtn" class="btn theme-btn" type="button"></button>
+    <button id="userChip" class="user-chip" type="button" title="Mi cuenta"></button>
   </header>
 
-  <nav class="cinta" id="cinta">
+  <div id="banner" class="banner" hidden></div>
+
+  <!-- ===== Vista Gantt ===== -->
+  <nav class="cinta" id="cinta" data-de="gantt">
     <div class="grupo">
       <button data-acc="deshacer" title="Deshacer (Ctrl+Z)">↶</button>
       <button data-acc="rehacer" title="Rehacer (Ctrl+Y)">↷</button>
@@ -78,26 +99,95 @@
     </div>
   </nav>
 
-  <main class="vista" id="vista">
+  <main class="vista" id="vista" data-de="gantt">
     <section class="panel" id="panelTabla"></section>
     <div class="divisor" id="divisor" title="Arrastra para cambiar el ancho"></div>
     <section class="panel" id="panelGrafico"></section>
   </main>
 
-  <footer class="pie" id="pie"></footer>
+  <footer class="pie" id="pie" data-de="gantt"></footer>
 
-  <div id="pantallaLogin" class="pantalla" hidden>
-    <form class="tarjeta" id="formLogin">
-      <h1>Diagrama de Gantt</h1>
-      <p>Escribe tu correo y te llegará un enlace para entrar.</p>
-      <input type="email" id="correoLogin" required placeholder="tu@correo.com" autocomplete="email">
-      <button type="submit" class="primario">Enviar enlace</button>
-      <p id="msgLogin" class="nota"></p>
-    </form>
+  <!-- ===== Vista Kanban ===== -->
+  <nav class="cinta" data-de="kanban" hidden>
+    <div class="grupo">
+      <span class="titulo-grupo">Tarjetas</span>
+      <input id="search" type="search" placeholder="Buscar tarjeta…" aria-label="Buscar tarjeta">
+      <select id="filterResp" aria-label="Filtrar por responsable">
+        <option value="">Todos los responsables</option>
+      </select>
+    </div>
+    <div class="grupo">
+      <span class="titulo-grupo">Tablero</span>
+      <button id="addColumn" type="button">＋ Proceso</button>
+      <button id="addLane" type="button">＋ Carril</button>
+    </div>
+    <div class="grupo">
+      <span class="titulo-grupo">Compartir</span>
+      <button id="shareBtn" type="button">Copiar enlace</button>
+      <button id="exportBtn" type="button" title="Seguimiento de las tarjetas para Excel">⭳ CSV</button>
+    </div>
+  </nav>
+
+  <main id="board" class="board" data-de="kanban" aria-live="polite" hidden>
+    <p class="loading">Cargando tablero…</p>
+  </main>
+
+  <!-- Inicio de sesión (uno solo para las dos vistas) -->
+  <div id="loginGate" class="login-gate" hidden>
+    <div class="login-box">
+      <h1>Planeación</h1>
+      <p>Diagrama de Gantt y Tablero Kanban. Entra con tu correo <strong id="loginDomain"></strong>.</p>
+      <form id="loginEmailForm" class="login-form" hidden>
+        <input id="loginEmail" type="email" required placeholder="tu.correo@hitss.com" autocomplete="email" aria-label="Correo de la empresa">
+        <button id="loginSend" class="btn primary">Enviarme el enlace para entrar</button>
+      </form>
+      <div id="loginMs" hidden>
+        <button id="loginBtn" type="button" class="btn primary ms-btn">
+          <svg width="18" height="18" viewBox="0 0 21 21" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
+          Entrar con Microsoft
+        </button>
+      </div>
+      <p id="loginMsg" class="login-msg" role="alert"></p>
+      <button id="loginSignOut" class="btn" hidden>Usar otra cuenta</button>
+    </div>
   </div>
 
+  <!-- Ventanas del Gantt -->
   <dialog id="dialogo"></dialog>
 
-  <script type="module">import './js/app.js';</script>
+  <!-- Ventana de una tarjeta -->
+  <dialog id="cardDialog" class="card-dialog">
+    <div id="cardDialogBody"></div>
+  </dialog>
+
+  <!-- Enlazar tarjeta ↔ tarea -->
+  <dialog id="enlaceDialog" class="ask-dialog link-dialog"></dialog>
+
+  <!-- Registro de accesos (solo administradores) -->
+  <dialog id="accessDialog" class="access-dialog">
+    <div class="dlg-head">
+      <h2>Control de acceso</h2>
+      <form method="dialog"><button class="icon-btn close" aria-label="Cerrar">✕</button></form>
+    </div>
+    <p class="hint">Quién pidió el enlace para entrar, quién entró y quién intentó con un correo no permitido.</p>
+    <div id="accessBody"></div>
+  </dialog>
+
+  <!-- Ventana de pregunta / confirmación -->
+  <dialog id="askDialog" class="ask-dialog">
+    <form method="dialog" id="askForm">
+      <h2 id="askTitle"></h2>
+      <p id="askHint" class="hint"></p>
+      <input id="askInput" autocomplete="off" maxlength="200">
+      <div class="ask-actions">
+        <button value="cancel" formnovalidate class="btn">Cancelar</button>
+        <button value="ok" id="askOk" class="btn primary">Aceptar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script type="module">import './js/principal.js';</script>
 </body>
 </html>

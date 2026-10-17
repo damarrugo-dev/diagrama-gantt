@@ -1,8 +1,21 @@
-# Diagrama de Gantt
+# Planeación: Diagrama de Gantt y Tablero Kanban
 
-Planificador de proyectos en línea al estilo de **Microsoft Project**: tabla de tareas a la izquierda y diagrama de Gantt a la derecha.
+Una sola página con dos vistas que se cambian con el interruptor **Gantt | Kanban** de la barra roja:
 
-Es un sitio estático (`index.html`, `styles.css`, `js/`) que se publica gratis con GitHub Pages. Los datos viven en una base de datos **privada y gratuita en Firebase** (Firestore). Mientras `config.js` tenga `firebaseConfig = null`, funciona en **modo de prueba** (solo guarda en el navegador).
+- **Gantt**: planificador al estilo de **Microsoft Project**, tabla de tareas a la izquierda y diagrama a la derecha.
+- **Kanban**: el [Tablero Kanban](https://github.com/damarrugo-dev/tablero-kanban) de siempre, con varios tableros.
+
+Es un sitio estático (`index.html`, `styles.css`, `js/`, `kanban/`) que se publica gratis con GitHub Pages. Los datos viven en la base de datos **Firebase del Tablero Kanban** (Firestore), así las dos vistas comparten el inicio de sesión y los datos. La dirección anterior del Kanban sigue funcionando con los mismos tableros. Mientras `config.js` tenga `firebaseConfig = null`, funciona en **modo de prueba** (solo guarda en el navegador).
+
+## Tarjetas y tareas enlazadas
+
+Cada tarjeta del Kanban y cada tarea del Gantt existen por su cuenta; enlazarlas es opcional.
+
+- **Al crear una tarjeta** (＋ en una celda del Kanban) se elige: *Solo en el Kanban*, *Crear también la tarea* (en el proyecto y la épica que elijas) o *Enlazar con una tarea existente*.
+- **Desde el Gantt**, la columna *Kanban* de cada tarea tiene un ＋ para crear su tarjeta o enlazarla con una existente.
+- **En edición**: la ventana de la tarjeta tiene la sección *Gantt* y la información de la tarea tiene la pestaña *Kanban*, para enlazar, abrir el otro lado o desenlazar.
+- Enlazadas, se sincronizan el **nombre** y el **avance**: primera columna = 0 %, última = 100 %, las del medio = avance intermedio. La tarjeta muestra las fechas de la tarea.
+- Borrar una de las dos no borra la otra; solo se quita el enlace.
 
 ## Funciones
 
@@ -45,17 +58,15 @@ El repositorio es **público** para poder usar GitHub Pages gratis. El código n
 3. En *Branch*: **main** y carpeta **/ (root)** → **Save**.
 4. En uno o dos minutos queda en `https://damarrugo-dev.github.io/diagrama-gantt/`. Cada cambio que se sube a `main` se publica solo.
 
-### 2. Base de datos privada (Firebase, gratis)
+### 2. Base de datos (Firebase del Tablero Kanban)
 
-Se usa un proyecto de Firebase **nuevo y aparte** del tablero Kanban: así las reglas de seguridad de uno no pisan las del otro.
+Se usa el proyecto de Firebase `tablero-kanban-f5f28`, que ya tiene el inicio de sesión por enlace al correo y el dominio `damarrugo-dev.github.io` autorizado. Solo hay que publicar las reglas de este repositorio, que son las del Kanban más las de los proyectos del Gantt:
 
-1. Entra a <https://console.firebase.google.com> → **Crear un proyecto** → nombre `diagrama-gantt` → desactiva Google Analytics → **Crear proyecto**.
-2. **Compilación / Build** → **Firestore Database** → **Crear base de datos** → ubicación `southamerica-east1` → **modo de producción** → **Crear**.
-3. Pestaña **Reglas**: borra lo que hay, pega [`firestore.rules`](firestore.rules) → **Publicar**.
-4. **Compilación / Build** → **Authentication** → **Comenzar** → pestaña **Método de acceso** → **Correo electrónico/contraseña** → activa **Vínculo de correo electrónico (acceso sin contraseña)** → **Guardar**.
-5. En **Authentication** → **Configuración** → **Dominios autorizados** → **Agregar dominio**: `damarrugo-dev.github.io`.
-6. Rueda ⚙ → **Configuración del proyecto** → *Tus apps* → ícono **`</>`** (Web) → apodo `gantt` → **Registrar app** → copia el bloque `firebaseConfig` y pégalo en [`config.js`](config.js) en lugar de `null`. Sube el cambio a GitHub.
-7. Abre el sitio, escribe tu correo y entra con el enlace que te llega.
+1. <https://console.firebase.google.com> → proyecto **tablero-kanban** → **Firestore Database** → pestaña **Reglas**.
+2. Borra lo que hay, pega [`firestore.rules`](firestore.rules) → **Publicar**.
+3. Abre el sitio y entra con tu correo.
+
+**Traer los proyectos del Gantt anterior** (los que estaban en el Firebase `diagrama-gantt-a9d62`): en el menú de proyectos, elige **⇪ Traer proyectos del Gantt anterior…**, marca los que quieras y pulsa *Traer*. Usa la sesión que ya tenías en ese navegador; los originales no se borran.
 
 Quién entra: solo correos **@hitss.com** o **@anava.com** (igual que el Kanban). Para cambiarlo, edita `login.dominios` en `config.js` **y** la línea `matches(...)` en `firestore.rules`.
 
@@ -65,9 +76,9 @@ Quién ve cada proyecto: solo quien lo creó y los correos de su lista `acceso` 
 
 > La configuración `firebaseConfig` es pública por diseño: lo que protege los datos son las reglas de `firestore.rules`.
 
-Plan gratuito (Spark): 1 GiB de datos, 50.000 lecturas y 20.000 escrituras por día. Cada proyecto es un solo documento (hasta ~1 MB, varios miles de tareas).
+Quién ve los tableros del Kanban: todos los de la empresa, como antes.
 
-**Alternativa:** también puede usar Supabase (PostgreSQL). Pega [`supabase/schema.sql`](supabase/schema.sql) en el *SQL Editor* de Supabase y llena `supabaseUrl` y `supabaseAnonKey` en `config.js` dejando `firebaseConfig = null`.
+Plan gratuito (Spark): 1 GiB de datos, 50.000 lecturas y 20.000 escrituras por día, compartidos con el Kanban. Cada proyecto es un solo documento (hasta ~1 MB, varios miles de tareas).
 
 ## Probar en tu computador
 
@@ -79,13 +90,18 @@ python3 -m http.server 8000
 ## Estructura
 
 ```
-index.html            pantalla principal
-styles.css            estilos (incluye impresión y modo oscuro)
-config.js             conexión a Firebase o Supabase (null = modo de prueba)
-firestore.rules       reglas de seguridad de Firebase
-js/app.js             interfaz: tabla, diagrama, diálogos, barra de herramientas
+index.html            pantalla principal (las dos vistas)
+styles.css            estilos de las dos vistas (incluye impresión y modo oscuro)
+config.js             conexión a Firebase (null = modo de prueba) y quién entra
+firestore.rules       reglas de seguridad de Firebase (Kanban + Gantt + accesos)
+js/principal.js       arranque y cambio entre Gantt y Kanban
+js/sesion.js          inicio de sesión, registro de accesos, tema claro / oscuro
+js/enlaces.js         enlaces tarjeta ↔ tarea y su sincronización
+js/util.js            utilidades compartidas (ventanas, menús, avisos)
+js/app.js             Gantt: tabla, diagrama, diálogos, barra de herramientas
 js/programador.js     motor de programación: vínculos, restricciones, ruta crítica, recursos
 js/calendario.js      calendario laboral (días hábiles y festivos)
-js/almacen.js         guardado en el navegador, en Firebase o en Supabase
-supabase/schema.sql   alternativa: tablas y reglas de privacidad para Supabase
+js/almacen.js         guardado de proyectos en el navegador o en Firebase
+js/migrar.js          traer proyectos del Firebase anterior del Gantt
+kanban/kanban.js      Kanban: tableros, carriles, procesos y tarjetas
 ```

@@ -1,18 +1,21 @@
 rules_version = '2';
+// Reglas de la base de datos compartida por el Tablero Kanban y el Diagrama de Gantt
+// (proyecto de Firebase "tablero-kanban"). Se pegan en Firebase → Firestore Database → Reglas.
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Solo personas que entraron con el enlace al correo y cuyo correo es de la empresa.
+    // Solo personas que iniciaron sesión con un correo de la empresa (enlace al correo o Microsoft).
     // Si cambias los dominios aquí, cámbialos también en config.js (login.dominios).
-    function correo() {
-      return request.auth.token.email.lower();
-    }
     function esDeLaEmpresa() {
       return request.auth != null
         && request.auth.token.email is string
-        && request.auth.token.email_verified == true
-        && correo().matches('.*@(hitss|anava)[.]com$');
+        && request.auth.token.email.lower().matches('.*@(hitss|anava)[.]com$')
+        // correo confirmado (enlace al correo) o cuenta de Microsoft
+        && (request.auth.token.email_verified == true
+            || request.auth.token.firebase.sign_in_provider == 'microsoft.com');
     }
-
+    function correo() {
+      return request.auth.token.email.lower();
+    }
     // Pueden ver el registro de accesos. Si cambias la lista, cámbiala también en config.js (login.administradores).
     function esAdministrador() {
       return esDeLaEmpresa() && correo() in ['marrugod@hitss.com'];
@@ -20,13 +23,23 @@ service cloud.firestore {
     // Registro de un acceso: solo esos campos, con la hora del servidor
     function registroValido() {
       let d = request.resource.data;
-      return d.keys().hasOnly(['tipo', 'email', 'navegador', 'fecha'])
+      return d.keys().hasOnly(['tipo', 'email', 'nombre', 'tablero', 'navegador', 'fecha'])
         && d.fecha == request.time
         && d.email is string && d.email.size() <= 200
-        && d.navegador is string && d.navegador.size() <= 60;
+        && d.tablero is string && d.tablero.size() <= 60
+        && d.navegador is string && d.navegador.size() <= 60
+        && (!('nombre' in d) || (d.nombre is string && d.nombre.size() <= 100));
     }
 
-    // Cada proyecto solo lo ven y editan los correos de su lista "acceso".
+    // Kanban: todos los de la empresa ven y mueven las tarjetas
+    match /tableros/{tablero} {
+      allow read, write: if esDeLaEmpresa();
+      match /tarjetas/{tarjeta} {
+        allow read, write: if esDeLaEmpresa();
+      }
+    }
+
+    // Gantt: cada proyecto solo lo ven y editan los correos de su lista "acceso"
     match /gantt_proyectos/{proyecto} {
       allow read: if esDeLaEmpresa() && correo() in resource.data.acceso;
       allow create: if esDeLaEmpresa()
@@ -40,11 +53,10 @@ service cloud.firestore {
       allow delete: if esDeLaEmpresa() && correo() == resource.data.propietario;
     }
 
-    // Control de acceso: quién pide el enlace, quién entra y quién es rechazado
     match /accesos/{id} {
       // Pedir el enlace o ser rechazado ocurre antes de iniciar sesión
       allow create: if registroValido() && (
-        request.resource.data.tipo in ['solicitud', 'rechazado']
+        (request.resource.data.tipo in ['solicitud', 'rechazado'] && !('nombre' in request.resource.data))
         || (request.resource.data.tipo == 'ingreso' && esDeLaEmpresa()
             && request.resource.data.email == correo())
       );
