@@ -41,7 +41,7 @@ Cada tarjeta del Kanban y cada tarea del Gantt existen por su cuenta; enlazarlas
 | Mostrar nivel de esquema, buscar tarea | ✔ |
 | Deshacer / rehacer | ✔ |
 | Exportar a Excel (CSV) e imprimir / guardar como PDF | ✔ |
-| Varios proyectos por usuario, compartir con otros (lista `acceso`) | ✔ reglas listas; falta la pantalla para invitar |
+| Varios proyectos, visibles para todo el equipo; cambios de otros se ven sin recargar | ✔ |
 
 Atajos de teclado como en Project: `Insert` (nueva tarea), `Supr` (eliminar), `Alt+Shift+→ / ←` (sangría), `Ctrl+F2` (vincular), `Ctrl+Shift+F2` (desvincular), `Shift+F2` (información de la tarea), `Ctrl+Z / Ctrl+Y`.
 
@@ -72,11 +72,9 @@ Quién entra: solo correos **@hitss.com** o **@anava.com** (igual que el Kanban)
 
 **Control de acceso** (igual que en el Kanban): cada vez que alguien pide el enlace, entra o intenta con un correo no permitido, queda registrado en Firestore (colección `accesos`). Los administradores de `config.js` (`login.administradores`) ven el botón **Accesos** arriba a la derecha, con el resumen por persona, el detalle de movimientos y la opción de exportarlo a Excel. Nadie puede cambiar ni borrar ese registro. Si cambias los administradores, cámbialos también en `esAdministrador()` de `firestore.rules`.
 
-Quién ve cada proyecto: solo quien lo creó y los correos de su lista `acceso` (el propietario puede compartirlo; los demás no pueden cambiar esa lista ni borrar el proyecto).
+Quién ve cada proyecto: todas las personas de la empresa que entran ven y editan todos los proyectos del Gantt, igual que los tableros del Kanban. Solo quien creó un proyecto puede borrarlo. Si otra persona guarda cambios en el proyecto que tienes abierto, se muestran solos (si estás escribiendo en una celda, espera a que termines).
 
 > La configuración `firebaseConfig` es pública por diseño: lo que protege los datos son las reglas de `firestore.rules`.
-
-Quién ve los tableros del Kanban: todos los de la empresa, como antes.
 
 Plan gratuito (Spark): 1 GiB de datos, 50.000 lecturas y 20.000 escrituras por día, compartidos con el Kanban. Cada proyecto es un solo documento (hasta ~1 MB, varios miles de tareas).
 

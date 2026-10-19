@@ -39,17 +39,12 @@ service cloud.firestore {
       }
     }
 
-    // Gantt: cada proyecto solo lo ven y editan los correos de su lista "acceso"
+    // Gantt: todos los de la empresa ven y editan todos los proyectos (igual que el Kanban);
+    // solo quien creó un proyecto puede borrarlo
     match /gantt_proyectos/{proyecto} {
-      allow read: if esDeLaEmpresa() && correo() in resource.data.acceso;
-      allow create: if esDeLaEmpresa()
-        && request.resource.data.propietario == correo()
-        && request.resource.data.acceso == [correo()];
-      allow update: if esDeLaEmpresa()
-        && correo() in resource.data.acceso
-        && request.resource.data.propietario == resource.data.propietario
-        // solo el propietario cambia quién tiene acceso
-        && (request.resource.data.acceso == resource.data.acceso || correo() == resource.data.propietario);
+      allow read: if esDeLaEmpresa();
+      allow create: if esDeLaEmpresa() && request.resource.data.propietario == correo();
+      allow update: if esDeLaEmpresa() && request.resource.data.propietario == resource.data.propietario;
       allow delete: if esDeLaEmpresa() && correo() == resource.data.propietario;
     }
 

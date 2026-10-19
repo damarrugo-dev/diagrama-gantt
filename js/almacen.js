@@ -2,6 +2,8 @@
 // - AlmacenLocal: en el navegador (modo de prueba, sin base de datos)
 
 export const nuevoId = () => crypto.randomUUID();
+// Identifica esta pestaña para no recibir como ajenos los propios cambios
+const PESTANA = crypto.randomUUID();
 
 export function proyectoVacio(nombre, inicio) {
   return {
@@ -29,6 +31,7 @@ export class AlmacenLocal {
     this.escribir(todos);
   }
   async crear(p) { await this.guardar(p); return p; }
+  escuchar() { return () => {}; }
   async eliminar(id) {
     const todos = this.leer();
     delete todos[id];
@@ -39,7 +42,8 @@ export class AlmacenLocal {
 
 // ---------- Firebase (Firestore) ----------
 // Cada proyecto es un documento de la colección "gantt_proyectos" con todas sus tareas.
-// Solo lo leen y modifican los correos que están en "acceso" (ver firestore.rules).
+// Todos los de la empresa ven y editan todos los proyectos, como en el Kanban;
+// solo quien lo creó ("propietario") puede borrarlo (ver firestore.rules).
 const DATOS = ['tareas', 'dependencias', 'recursos', 'asignaciones', 'excepciones'];
 
 export class AlmacenFirebase {
@@ -51,13 +55,16 @@ export class AlmacenFirebase {
     this.col = fs.collection(db, 'gantt_proyectos');
   }
   async listar() {
-    const qs = await this.fs.getDocs(this.fs.query(this.col, this.fs.where('acceso', 'array-contains', this.correo)));
-    return qs.docs.map(d => ({ id: d.id, nombre: d.data().nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    const qs = await this.fs.getDocs(this.col);
+    return qs.docs.map(d => ({ id: d.id, nombre: d.data().nombre || 'Proyecto', propietario: d.data().propietario }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   }
   async cargar(id) {
     const snap = await this.fs.getDoc(this.fs.doc(this.col, id));
     if (!snap.exists()) return null;
-    const d = snap.data();
+    return this.aProyecto(id, snap.data());
+  }
+  aProyecto(id, d) {
     const p = {
       id, nombre: d.nombre, inicio: d.inicio, diasLaborables: d.diasLaborables, horasDia: d.horasDia, moneda: d.moneda,
       propietario: d.propietario, acceso: d.acceso,
@@ -70,7 +77,7 @@ export class AlmacenFirebase {
     const datos = JSON.parse(JSON.stringify(Object.fromEntries(DATOS.map(k => [k, p[k] || []]))));
     return {
       nombre: p.nombre, inicio: p.inicio, diasLaborables: p.diasLaborables, horasDia: p.horasDia, moneda: p.moneda,
-      datos, actualizado: this.fs.serverTimestamp(), actualizadoPor: this.correo,
+      datos, actualizado: this.fs.serverTimestamp(), actualizadoPor: this.correo, actualizadoDesde: PESTANA,
     };
   }
   async crear(p) {
@@ -84,5 +91,16 @@ export class AlmacenFirebase {
   }
   async eliminar(id) {
     await this.fs.deleteDoc(this.fs.doc(this.col, id));
+  }
+  // Avisa cuando otra persona (u otra pestaña) guarda cambios en el proyecto
+  escuchar(id, alCambiar) {
+    let primero = true; // la primera lectura es la versión que ya se cargó
+    return this.fs.onSnapshot(this.fs.doc(this.col, id), snap => {
+      if (primero) { primero = false; return; }
+      if (!snap.exists() || snap.metadata.hasPendingWrites) return;
+      const d = snap.data();
+      if (d.actualizadoDesde === PESTANA) return;
+      alCambiar(this.aProyecto(id, d), d.actualizadoPor);
+    }, err => console.warn('No se pueden recibir los cambios del proyecto', err));
   }
 }

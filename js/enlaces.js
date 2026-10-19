@@ -33,7 +33,12 @@ const indiceColumna = (card, cols) => Math.max(0, cols.findIndex(c => c.id === c
 
 // Los cambios de enlaces se aplican de uno en uno para que no se crucen
 let cola = Promise.resolve();
-const enCola = fn => (cola = cola.then(fn).catch(err => { console.error(err); toast('No se pudo sincronizar el enlace: ' + (err?.message || err)); }));
+const enCola = fn => (cola = cola.then(fn).catch(err => {
+  console.error(err);
+  toast(err?.code === 'permission-denied'
+    ? 'No tienes permiso para cambiar el proyecto del Gantt de esta tarea: allí no se actualizó.'
+    : 'No se pudo sincronizar el enlace: ' + (err?.message || err));
+}));
 
 // ---------- Sincronizar una tarjeta con su tarea ----------
 async function sincronizar(b, c) {

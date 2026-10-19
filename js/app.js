@@ -91,6 +91,7 @@ const ESCALAS = {
 // ---------- Guardado ----------
 let temporizador = null;
 let guardando = Promise.resolve();
+let guardandoAhora = 0;
 function guardarPronto() {
   ponerEstado('Cambios sin guardar…');
   clearTimeout(temporizador);
@@ -98,7 +99,9 @@ function guardarPronto() {
 }
 function guardarYa() {
   clearTimeout(temporizador);
+  temporizador = null;
   const copia = structuredClone(estado.proyecto);
+  guardandoAhora++;
   guardando = guardando.then(async () => {
     ponerEstado('Guardando…');
     try {
@@ -106,7 +109,7 @@ function guardarYa() {
       ponerEstado(estado.almacen.modo === 'local' ? 'Guardado en este navegador' : 'Guardado');
     } catch (e) {
       ponerEstado('No se pudo guardar: ' + e.message, true);
-    }
+    } finally { guardandoAhora--; }
   });
   return guardando;
 }
@@ -1221,13 +1224,13 @@ function dialogoProyecto() {
     h('h3', {}, 'Calendario: días laborables'), h('div', { class: 'dias' }, dias),
     h('h3', {}, 'Días festivos y excepciones'), tablaExc,
   ], [
-    h('button', { type: 'button', class: 'peligro', onclick: () => {
+    !p.propietario || p.propietario === correoActual ? h('button', { type: 'button', class: 'peligro', onclick: () => {
       dialogoConfirmar('Eliminar proyecto', `¿Eliminar "${p.nombre}" con todas sus tareas? No se puede deshacer.`, [['Eliminar', async () => {
-        await estado.almacen.eliminar(p.id);
+        try { await estado.almacen.eliminar(p.id); } catch (e) { return aviso('No se pudo eliminar: ' + e.message, true); }
         estado.proyecto = null;
         await iniciarProyectos();
       }]]);
-    } }, 'Eliminar proyecto'),
+    } }, 'Eliminar proyecto') : null,
     h('span', { class: 'espacio' }),
     h('button', { type: 'button', class: 'primario', onclick: () => {
       cambiar(() => {
@@ -1295,15 +1298,19 @@ async function pintarSelector() {
   const sel = $('#selProyecto');
   const lista = await estado.almacen.listar();
   sel.replaceChildren(...[
-    ...lista.map(x => h('option', { value: x.id, selected: estado.proyecto?.id === x.id }, x.id === estado.proyecto?.id ? estado.proyecto.nombre : x.nombre)),
+    ...lista.map(x => h('option', { value: x.id, selected: estado.proyecto?.id === x.id },
+      x.id === estado.proyecto?.id ? estado.proyecto.nombre : x.nombre)),
     h('option', { value: '__nuevo' }, '＋ Proyecto nuevo…'),
     estado.almacen.modo === 'firebase' ? h('option', { value: '__migrar' }, '⇪ Traer proyectos del Gantt anterior…') : null,
   ].filter(Boolean));
 }
+let dejarDeEscuchar = () => {};
 async function abrirProyecto(id) {
   if (estado.proyecto && temporizador) await guardarYa();
   const p = await estado.almacen.cargar(id);
   if (!p) return;
+  dejarDeEscuchar();
+  dejarDeEscuchar = estado.almacen.escuchar(id, (remoto, quien) => recibirCambios(id, remoto, quien));
   for (const k of ['excepciones', 'tareas', 'dependencias', 'recursos', 'asignaciones']) p[k] ||= [];
   estado.proyecto = p;
   estado.deshacer = []; estado.rehacer = []; estado.sel.clear();
@@ -1318,6 +1325,38 @@ async function abrirProyecto(id) {
   requestAnimationFrame(() => desplazarA(addDaysISO(estado.calc.comienzo, -3)));
   enlaces.alAbrirProyecto(p);
 }
+// Otra persona guardó cambios en el proyecto abierto: se muestran sin recargar.
+// Si aquí hay cambios sin guardar o una ventana abierta, se espera a que terminen.
+let remotoPendiente = null;
+function recibirCambios(id, remoto, quien) {
+  remotoPendiente = { id, remoto, quien };
+  aplicarRemoto();
+}
+function aplicarRemoto() {
+  if (!remotoPendiente) return;
+  const foco = document.activeElement;
+  // Se espera si hay cambios sin guardar, una ventana abierta o una celda a medio escribir
+  if (temporizador || guardandoAhora || document.querySelector('#dialogo[open]') || (foco?.closest?.('#panelTabla') && foco.dataset.sucio)) {
+    clearTimeout(aplicarRemoto.t); aplicarRemoto.t = setTimeout(aplicarRemoto, 800); return;
+  }
+  const { id, remoto, quien } = remotoPendiente;
+  remotoPendiente = null;
+  if (estado.proyecto?.id !== id) return;
+  for (const k of ['excepciones', 'tareas', 'dependencias', 'recursos', 'asignaciones']) remoto[k] ||= [];
+  estado.proyecto = remoto;
+  // Lo que se podía deshacer ya no aplica sobre la versión nueva
+  estado.deshacer = []; estado.rehacer = [];
+  for (const x of [...estado.sel]) if (!remoto.tareas.some(t => t.id === x)) estado.sel.delete(x);
+  recalcular();
+  pintarSelector();
+  if (visible) {
+    render();
+    const celda = foco?.dataset?.celda;
+    if (celda) document.querySelector(`[data-celda="${celda}"]`)?.focus();
+  }
+  aviso(`Actualizado con los cambios de ${quien || 'otra persona'}.`);
+}
+
 async function iniciarProyectos() {
   let lista = await estado.almacen.listar();
   if (!lista.length) {
@@ -1355,6 +1394,7 @@ const ACCIONES = {
 };
 
 function conectarInterfaz() {
+  $('#panelTabla').addEventListener('input', e => { e.target.dataset.sucio = '1'; });
   $('#cinta').addEventListener('click', e => {
     const b = e.target.closest('button[data-acc]');
     if (b && estado.proyecto) ACCIONES[b.dataset.acc]();
@@ -1420,7 +1460,9 @@ function conectarInterfaz() {
 
 // ---------- Arranque ----------
 let visible = false;
+let correoActual = null;
 export async function iniciarGantt(ses) {
+  correoActual = ses.correo?.toLowerCase() || null;
   conectarInterfaz();
   estado.almacen = ses.modo === 'firebase' ? new AlmacenFirebase(ses.fs, ses.db, ses.correo) : new AlmacenLocal();
   try { await iniciarProyectos(); } catch (e) { console.error(e); ponerEstado('Error al cargar: ' + e.message, true); }
@@ -1455,7 +1497,7 @@ export const ganttApi = {
     await estado.almacen.guardar(p);
   },
   async abrirTarea(proyecto, tarea) {
-    if (estado.proyecto?.id !== proyecto) await abrirProyecto(proyecto);
+    if (estado.proyecto?.id !== proyecto) await abrirProyecto(proyecto).catch(err => console.warn(err));
     if (estado.proyecto?.id !== proyecto) return aviso('No tienes acceso a ese proyecto.', true);
     if (!T(tarea)) return aviso('La tarea ya no existe.', true);
     // Se despliegan sus épicas para que se vea
