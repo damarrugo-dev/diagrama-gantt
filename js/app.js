@@ -1170,17 +1170,42 @@ function dialogoTarea(id) {
   const tablaPred = h('div');
   const pintarPred = () => tablaPred.replaceChildren(h('table', { class: 'mini' },
     h('tr', {}, h('th', {}, 'Id'), h('th', {}, 'Nombre'), h('th', {}, 'Tipo'), h('th', {}, 'Pos. (días)'), h('th', {})),
-    preds.map((d, i) => h('tr', {},
+    preds.filter(d => !esParalela(d)).map(d => h('tr', {},
       h('td', {}, numeroFila(d.pred)),
       h('td', {}, T(d.pred)?.nombre || ''),
       h('td', {}, h('select', { onchange: e => (d.tipo = e.target.value) }, TIPOS_VINCULO.map(k => h('option', { value: k, selected: d.tipo === k }, { FS: 'Fin a comienzo (FC)', SS: 'Comienzo a comienzo (CC)', FF: 'Fin a fin (FF)', SF: 'Comienzo a fin (CF)' }[k])))),
       h('td', {}, h('input', { type: 'number', value: d.retraso || 0, style: 'width:70px', onchange: e => (d.retraso = Math.round(+e.target.value || 0)) })),
-      h('td', {}, h('button', { type: 'button', onclick: () => { preds.splice(i, 1); pintarPred(); } }, '✕')))),
+      h('td', {}, h('button', { type: 'button', onclick: () => { preds.splice(preds.indexOf(d), 1); pintarPred(); } }, '✕')))),
     h('tr', {}, h('td', { colspan: 5 }, h('select', {
       onchange: e => { if (e.target.value) { preds.push({ id: nuevoId(), pred: e.target.value, succ: id, tipo: 'FS', retraso: 0 }); pintarPred(); } },
     }, h('option', { value: '' }, '＋ Agregar predecesora…'),
       p.tareas.filter(x => x.id !== id && !preds.some(d => d.pred === x.id)).map(x => h('option', { value: x.id }, `${numeroFila(x.id)} · ${x.nombre}`)))))));
   pintarPred();
+
+  // Tareas en paralelo: empieza a la vez que ellas (vínculo CC sin posposición)
+  const tablaPar = h('div');
+  const pintarPar = () => tablaPar.replaceChildren(
+    h('p', { class: 'hint', style: 'margin-bottom:8px' }, 'Esta tarea empieza el mismo día que las tareas que elijas aquí, y se mueve con ellas.'),
+    h('table', { class: 'mini' },
+      h('tr', {}, h('th', {}, 'Id'), h('th', {}, 'Nombre'), h('th', {})),
+      preds.filter(esParalela).map(d => h('tr', {},
+        h('td', {}, numeroFila(d.pred)),
+        h('td', {}, T(d.pred)?.nombre || ''),
+        h('td', {}, h('button', { type: 'button', onclick: () => { preds.splice(preds.indexOf(d), 1); pintarPar(); pintarPred(); } }, '✕')))),
+      h('tr', {}, h('td', { colspan: 3 }, h('select', {
+        onchange: e => {
+          if (!e.target.value) return;
+          // si ya era predecesora de otro tipo, pasa a ser paralela
+          const ya = preds.findIndex(d => d.pred === e.target.value);
+          if (ya >= 0) preds.splice(ya, 1);
+          preds.push({ id: nuevoId(), pred: e.target.value, succ: id, tipo: 'SS', retraso: 0 });
+          pintarPar(); pintarPred();
+        },
+      }, h('option', { value: '' }, '＋ Agregar tarea en paralelo…'),
+        p.tareas.filter(x => x.id !== id && !preds.some(d => d.pred === x.id && esParalela(d))
+          && !ancestros(estado.calc.info, id).includes(x.id) && !ancestros(estado.calc.info, x.id).includes(id))
+          .map(x => h('option', { value: x.id }, `${numeroFila(x.id)} · ${x.nombre}`)))))));
+  pintarPar();
 
   const tablaAsig = h('div');
   const pintarAsig = () => tablaAsig.replaceChildren(h('table', { class: 'mini' },
@@ -1203,6 +1228,7 @@ function dialogoTarea(id) {
       h('div', { class: 'campo' }, h('span', {}, 'Fechas calculadas'), h('div', {}, `${fmtFechaLarga(r.comienzo)} → ${fmtFechaLarga(r.fin)}`)),
       campo('Color de la barra', h('div', {}, f.usarColor, ' ', f.color))),
     Predecesoras: tablaPred,
+    'En paralelo': tablaPar,
     Recursos: tablaAsig,
     Avanzado: h('div', { class: 'rejilla2' },
       campo('Tipo de restricción', f.restriccion), campo('Fecha de restricción', f.fechaRestriccion),
