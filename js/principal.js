@@ -5,6 +5,7 @@ import { conectar, sesion } from './sesion.js';
 import { iniciarGantt, mostrarGantt, ganttApi } from './app.js';
 import { iniciarKanban, mostrarKanban, kanbanApi } from '../kanban/kanban.js';
 import * as enlaces from './enlaces.js';
+import { vigilarVersion } from './version.js';
 
 const VISTAS = ['gantt', 'kanban'];
 let actual = null;
@@ -28,6 +29,7 @@ export function mostrar(vista) {
 }
 
 async function arrancar() {
+  vigilarVersion();
   for (const v of VISTAS) $(`#ver-${v}`).onclick = () => mostrar(v);
   let inicial = new URLSearchParams(location.search).get('vista');
   if (!inicial) { try { inicial = localStorage.getItem('planeacion:vista'); } catch {} }

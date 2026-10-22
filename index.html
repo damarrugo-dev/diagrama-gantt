@@ -12,7 +12,7 @@
     (() => {
       const v = Date.now();
       const archivos = ['config.js', 'js/principal.js', 'js/app.js', 'js/programador.js', 'js/calendario.js', 'js/almacen.js',
-        'js/util.js', 'js/sesion.js', 'js/enlaces.js', 'js/migrar.js', 'kanban/kanban.js'];
+        'js/util.js', 'js/sesion.js', 'js/enlaces.js', 'js/migrar.js', 'js/version.js', 'kanban/kanban.js'];
       const mapa = { imports: Object.fromEntries(archivos.map(f => [new URL(f, location.href).href, `${new URL(f, location.href).href}?v=${v}`])) };
       const im = document.createElement('script');
       im.type = 'importmap';
