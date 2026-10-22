@@ -484,6 +484,9 @@ function confirmarCelda(id, col, valor) {
           p.dependencias = p.dependencias.filter(d => !(d.succ === id && d.pred === otra.id));
           agregarVinculo(p, otra.id, id, 'SS', 0);
         }
+        // En paralelo = mismas fechas: toma la duración de la primera tarea elegida
+        const primera = lista.length && p.tareas[lista[0].fila - 1];
+        if (primera && !r.resumen && !r.epicaVacia) { const o = R(primera.id); t.duracion = o.e - o.s; }
       });
       break;
     }
@@ -1185,7 +1188,7 @@ function dialogoTarea(id) {
   // Tareas en paralelo: empieza a la vez que ellas (vínculo CC sin posposición)
   const tablaPar = h('div');
   const pintarPar = () => tablaPar.replaceChildren(
-    h('p', { class: 'hint', style: 'margin-bottom:8px' }, 'Esta tarea empieza el mismo día que las tareas que elijas aquí, y se mueve con ellas.'),
+    h('p', { class: 'hint', style: 'margin-bottom:8px' }, 'Esta tarea toma las mismas fechas que la tarea que elijas: empieza el mismo día, dura lo mismo y se mueve con ella. Después puedes cambiarle la duración en General.'),
     h('table', { class: 'mini' },
       h('tr', {}, h('th', {}, 'Id'), h('th', {}, 'Nombre'), h('th', {})),
       preds.filter(esParalela).map(d => h('tr', {},
@@ -1199,6 +1202,8 @@ function dialogoTarea(id) {
           const ya = preds.findIndex(d => d.pred === e.target.value);
           if (ya >= 0) preds.splice(ya, 1);
           preds.push({ id: nuevoId(), pred: e.target.value, succ: id, tipo: 'SS', retraso: 0 });
+          // mismas fechas: toma la duración de la otra tarea
+          if (!r.resumen && !r.epicaVacia) { const o = R(e.target.value); f.duracion.value = fmtDur(o.e - o.s, o.e === o.s); }
           pintarPar(); pintarPred();
         },
       }, h('option', { value: '' }, '＋ Agregar tarea en paralelo…'),
