@@ -410,17 +410,21 @@ function establecerLineaBase() {
 }
 function exportarCSV() {
   const p = estado.proyecto;
-  const filas = [['Id', 'EDT', 'Nombre', 'Nivel', 'Duración (días)', 'Comienzo', 'Fin', 'Predecesoras', 'Recursos', '% completado', 'Trabajo (h)', 'Margen total (días)', 'Crítica', 'Comienzo previsto', 'Fin previsto']];
+  const filas = [['Id', 'EDT', 'Nombre', 'Nivel', 'Duración (días)', 'Comienzo', 'Fin', 'Predecesoras', 'En paralelo con', 'Recursos', '% completado', 'Trabajo (h)', 'Margen total (días)', 'Crítica', 'Comienzo previsto', 'Fin previsto']];
   for (const t of p.tareas) {
     const r = R(t.id);
-    filas.push([r.fila + 1, r.edt, t.nombre, r.nivel, r.e - r.s, r.comienzo, r.fin, predecesorasDe(t.id), recursosDe(t.id), t.porcentaje || 0,
+    filas.push([r.fila + 1, r.edt, t.nombre, r.nivel, r.e - r.s, r.comienzo, r.fin, predecesorasDe(t.id), paralelasDe(t.id), recursosDe(t.id), t.porcentaje || 0,
       +r.trabajo.toFixed(2), r.holgura, r.critica ? 'Sí' : 'No', t.lbComienzo || '', t.lbFin || '']);
   }
   const csv = filas.map(f => f.map(v => /[";\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v).join(';')).join('\r\n');
   descargar(`${p.nombre}.csv`, '﻿' + csv, 'text/csv;charset=utf-8');
 }
 
-const predecesorasDe = id => textoPredecesoras(estado.proyecto.dependencias.filter(d => d.succ === id), numeroFila);
+// "En paralelo con" son los vínculos Comienzo-Comienzo sin posposición: la tarea empieza a la vez que la otra.
+// Se muestran en su propia columna; los demás vínculos van en "Predecesoras".
+const esParalela = d => d.tipo === 'SS' && !d.retraso;
+const predecesorasDe = id => textoPredecesoras(estado.proyecto.dependencias.filter(d => d.succ === id && !esParalela(d)), numeroFila);
+const paralelasDe = id => estado.proyecto.dependencias.filter(d => d.succ === id && esParalela(d)).map(d => numeroFila(d.pred)).filter(Boolean).join(';');
 function recursosDe(id) {
   const recs = new Map(estado.proyecto.recursos.map(r => [r.id, r]));
   return estado.proyecto.asignaciones.filter(a => a.tarea === id && recs.has(a.recurso))
@@ -462,11 +466,26 @@ function confirmarCelda(id, col, valor) {
       const lista = parsePredecesoras(nombresAIds(valor));
       if (!lista) { aviso('Escribe el Id de la tarea predecesora (el número de la columna Id), por ejemplo 3 o 3;5. También puedes elegirla de la lista.', true); return render(); }
       cambiar(() => {
-        p.dependencias = p.dependencias.filter(d => d.succ !== id);
+        p.dependencias = p.dependencias.filter(d => d.succ !== id || esParalela(d));
         for (const x of lista) {
           const pred = p.tareas[x.fila - 1];
           if (!pred) { aviso(`No existe la tarea ${x.fila}.`, true); continue; }
           agregarVinculo(p, pred.id, id, x.tipo, x.retraso);
+        }
+      });
+      break;
+    }
+    case 'par': {
+      const lista = parsePredecesoras(nombresAIds(valor));
+      if (!lista) { aviso('Escribe el Id de la tarea con la que empieza a la vez (el número de la columna Id), por ejemplo 3 o 3;5. También puedes elegirla de la lista.', true); return render(); }
+      cambiar(() => {
+        p.dependencias = p.dependencias.filter(d => d.succ !== id || !esParalela(d));
+        for (const x of lista) {
+          const otra = p.tareas[x.fila - 1];
+          if (!otra) { aviso(`No existe la tarea ${x.fila}.`, true); continue; }
+          // Si ya había otro vínculo con esa tarea, se reemplaza por el paralelo
+          p.dependencias = p.dependencias.filter(d => !(d.succ === id && d.pred === otra.id));
+          agregarVinculo(p, otra.id, id, 'SS', 0);
         }
       });
       break;
@@ -498,7 +517,7 @@ function nombresAIds(texto) {
 }
 
 // Lista desplegable para elegir la tarea predecesora (como en Project)
-function selectorPredecesoras(input, id) {
+function selectorPredecesoras(input, id, col = 'pred') {
   let lista = null;
   const cerrar = () => { lista?.remove(); lista = null; };
   const mostrar = e => {
@@ -507,7 +526,7 @@ function selectorPredecesoras(input, id) {
     // Al entrar en la celda se muestran todas; al escribir, se filtra por lo último escrito
     const busca = e.type === 'input' ? partes[partes.length - 1].trim().toLowerCase() : '';
     if (e.type !== 'input' && partes[partes.length - 1].trim()) partes.push('');
-    const yaEstan = new Set(estado.proyecto.dependencias.filter(d => d.succ === id).map(d => d.pred));
+    const yaEstan = new Set(estado.proyecto.dependencias.filter(d => d.succ === id && (col === 'par') === esParalela(d)).map(d => d.pred));
     const info = estado.calc.info;
     const opciones = estado.proyecto.tareas.filter(t => t.id !== id && !yaEstan.has(t.id)
       && !ancestros(info, id).includes(t.id) && !ancestros(info, t.id).includes(id)
@@ -524,7 +543,7 @@ function selectorPredecesoras(input, id) {
           const valor = partes.map(x => x.trim()).filter(Boolean).join(';');
           cerrar();
           input.value = input.defaultValue = valor;
-          confirmarCelda(id, 'pred', valor);
+          confirmarCelda(id, col, valor);
         },
       }, h('b', {}, numeroFila(t.id)), ' ', t.nombre || '(sin nombre)')));
     document.body.append(lista);
@@ -571,6 +590,7 @@ const COLUMNAS = [
   { k: 'comienzo', t: 'Comienzo', w: 122 },
   { k: 'fin', t: 'Fin', w: 122 },
   { k: 'pred', t: 'Predecesoras', w: 104 },
+  { k: 'par', t: 'En paralelo con', w: 96 },
   { k: 'recursos', t: 'Nombres de los recursos', w: 170 },
   { k: 'pct', t: '% compl.', w: 64 },
   { k: 'kanban', t: 'Kanban', w: 104 },
@@ -666,12 +686,13 @@ function filaTabla(t) {
       r.resumen ? h('span', { class: 'insignia', title: 'Épica: agrupa tareas' }, plegada ? `ÉPICA · ${contarTareas(t.id)}` : 'ÉPICA')
         : r.epicaVacia ? h('span', { class: 'insignia', title: 'Épica sin tareas: selecciónala y pulsa ＋ Tarea para agregarle tareas' }, 'ÉPICA') : null),
     ...(r.epicaVacia
-      ? [h('div', { class: 'celda c-duracion' }), h('div', { class: 'celda c-comienzo' }), h('div', { class: 'celda c-fin' }), h('div', { class: 'celda c-pred' }), h('div', { class: 'celda c-recursos' }), h('div', { class: 'celda c-pct' })]
+      ? [h('div', { class: 'celda c-duracion' }), h('div', { class: 'celda c-comienzo' }), h('div', { class: 'celda c-fin' }), h('div', { class: 'celda c-pred' }), h('div', { class: 'celda c-par' }), h('div', { class: 'celda c-recursos' }), h('div', { class: 'celda c-pct' })]
       : [
     h('div', { class: 'celda c-duracion' }, entrada('duracion', fmtDur(r.e - r.s, r.hito), { readOnly: r.resumen })),
     h('div', { class: 'celda c-comienzo' }, entrada('comienzo', r.comienzo, { type: 'date', readOnly: r.resumen })),
     h('div', { class: 'celda c-fin' }, entrada('fin', r.fin, { type: 'date', readOnly: r.resumen })),
     h('div', { class: 'celda c-pred' }, selectorPredecesoras(entrada('pred', predecesorasDe(t.id), { placeholder: r.resumen ? '' : 'Elegir…', autocomplete: 'off' }), t.id)),
+    h('div', { class: 'celda c-par', title: 'Empieza al mismo tiempo que estas tareas' }, selectorPredecesoras(entrada('par', paralelasDe(t.id), { placeholder: r.resumen ? '' : 'Elegir…', autocomplete: 'off' }), t.id, 'par')),
     h('div', { class: 'celda c-recursos' }, r.resumen ? '' : entrada('recursos', recursosDe(t.id), { list: 'listaRecursos' })),
     h('div', { class: 'celda c-pct' }, entrada('pct', (t.porcentaje || 0) + '%', { readOnly: r.resumen }))]),
     h('div', { class: 'celda c-kanban' }, celdaKanban(t, r)),
