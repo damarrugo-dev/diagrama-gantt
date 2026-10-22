@@ -363,8 +363,8 @@ async function selectorGantt({ conNinguno, inicial = conNinguno ? 'no' : 'nueva'
     const tareas = datos?.p.tareas || [];
     const R = id => datos.calc.tareas.get(id);
     selEpica.replaceChildren(h('option', { value: '' }, 'Sin épica (al final del proyecto)'),
-      ...tareas.filter(t => R(t.id).resumen).map(t => h('option', { value: t.id }, `${'— '.repeat(R(t.id).nivel - 1)}${t.nombre || '(sin nombre)'}`)));
-    const libres = tareas.filter(t => !R(t.id).resumen && !t.kanban);
+      ...tareas.filter(t => R(t.id).resumen || R(t.id).epicaVacia).map(t => h('option', { value: t.id }, `${'— '.repeat(R(t.id).nivel - 1)}${t.nombre || '(sin nombre)'}`)));
+    const libres = tareas.filter(t => !R(t.id).resumen && !R(t.id).epicaVacia && !t.kanban);
     selTarea.replaceChildren(...(libres.length
       ? libres.map(t => h('option', { value: t.id }, `${R(t.id).fila + 1} · ${t.nombre || '(sin nombre)'}`))
       : [h('option', { value: '' }, 'No hay tareas libres en este proyecto')]));

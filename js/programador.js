@@ -91,7 +91,7 @@ export function programar(proyecto) {
 
   const hojas = tareas.filter(t => !info.get(t.id).resumen);
   const resumenesAbajoArriba = tareas.filter(t => info.get(t.id).resumen).reverse();
-  const dur = t => Math.max(0, Math.round(+t.duracion || 0));
+  const dur = t => t.epica ? 0 : Math.max(0, Math.round(+t.duracion || 0)); // una épica solo dura lo que sus tareas
   const idxHito = (t, fecha) => cal.indice(fecha) + (dur(t) === 0 ? 1 : 0);
 
   const c = new Map(tareas.map(t => [t.id, { s: 0, e: dur(t) }]));
@@ -204,7 +204,9 @@ export function programar(proyecto) {
     const r = {
       ...i, ...x, holgura,
       critica: !i.resumen && holgura <= 0,
-      hito: !i.resumen && dur(t) === 0,
+      hito: !i.resumen && !t.epica && dur(t) === 0,
+      // Épica recién creada que aún no tiene tareas (se muestra como épica, no como tarea)
+      epicaVacia: !!t.epica && !i.resumen,
       comienzo: cal.fechaComienzo(x.s, x.e),
       fin: cal.fechaFin(x.s, x.e),
       tardeLimite: !!(t.fechaLimite && x.e > cal.indice(t.fechaLimite) + 1),

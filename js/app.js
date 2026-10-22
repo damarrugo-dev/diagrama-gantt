@@ -206,12 +206,18 @@ function insertar(extra) {
   const id = cambiar(p => {
     const [primera] = seleccionOrdenada();
     const t = nuevaTareaObj(extra);
-    if (primera) {
+    if (primera && R(primera).epicaVacia) {
+      // Épica sin tareas seleccionada: la tarea nueva entra en ella
+      const i = p.tareas.findIndex(x => x.id === primera);
+      t.nivel = p.tareas[i].nivel + 1;
+      p.tareas.splice(i + 1, 0, t);
+    } else if (primera) {
       const i = p.tareas.findIndex(x => x.id === primera);
       t.nivel = p.tareas[i].nivel;
       p.tareas.splice(i, 0, t);
     } else {
-      t.nivel = p.tareas.length ? p.tareas[p.tareas.length - 1].nivel : 1;
+      const ultima = p.tareas[p.tareas.length - 1];
+      t.nivel = ultima ? ultima.nivel + (R(ultima.id).epicaVacia ? 1 : 0) : 1;
       p.tareas.push(t);
     }
     return t.id;
@@ -220,30 +226,22 @@ function insertar(extra) {
   render();
   enfocar(id, 'nombre');
 }
-// Una épica nueva siempre queda en el nivel principal: no tiene que estar dentro de otra épica.
-// Si hay tareas seleccionadas, pasan a ser sus tareas (como en Project). Si estaban dentro de
-// otra épica, la nueva se pone justo después de esa épica. Para anidarla, usa sangría o "Mover a épica".
+// "Épica" crea una épica vacía e independiente en el nivel principal, sin meter ni sacar tareas:
+// va justo después del bloque principal de la fila seleccionada (o al final). Luego se le agregan
+// tareas seleccionándola y pulsando "＋ Tarea", o con "Mover a épica".
 function insertarResumen() {
-  const ids = seleccionOrdenada();
+  const [primera] = seleccionOrdenada();
   let nueva;
   cambiar(p => {
-    nueva = nuevaTareaObj({ nombre: 'Nueva épica', nivel: 1 });
-    if (!ids.length) { p.tareas.push(nueva); return; }
-    const i = p.tareas.findIndex(x => x.id === ids[0]);
-    if (p.tareas[i].nivel === 1) {
-      // Tareas del nivel principal: la épica se inserta encima y las agrupa
-      const [, fin] = bloque(ids[ids.length - 1]);
-      for (let k = i; k < fin; k++) p.tareas[k].nivel++;
-      p.tareas.splice(i, 0, nueva);
-      return;
+    nueva = nuevaTareaObj({ nombre: 'Nueva épica', nivel: 1, duracion: 0, epica: true });
+    let pos = p.tareas.length;
+    if (primera) {
+      let raiz = p.tareas.findIndex(x => x.id === primera);
+      while (raiz > 0 && p.tareas[raiz].nivel > 1) raiz--;
+      pos = raiz + 1;
+      while (pos < p.tareas.length && p.tareas[pos].nivel > 1) pos++;
     }
-    // Dentro de otra épica: la nueva va después de la épica principal que las contiene
-    let raiz = i;
-    while (p.tareas[raiz].nivel > 1) raiz--;
-    let pos = raiz + 1;
-    while (pos < p.tareas.length && p.tareas[pos].nivel > 1) pos++;
     p.tareas.splice(pos, 0, nueva);
-    moverAEpica(p, ids, nueva.id);
   });
   estado.sel = new Set([nueva.id]);
   render();
@@ -286,7 +284,8 @@ function moverAEpica(p, ids, destino) {
   p.tareas.splice(pos, 0, ...nuevas);
   return true;
 }
-const epicasDisponibles = excluir => estado.proyecto.tareas.filter(t => R(t.id).resumen && !excluir.has(t.id));
+const esEpica = id => R(id).resumen || R(id).epicaVacia;
+const epicasDisponibles = excluir => estado.proyecto.tareas.filter(t => esEpica(t.id) && !excluir.has(t.id));
 const nombreEpica = t => `${'— '.repeat(R(t.id).nivel - 1)}${t.nombre || '(sin nombre)'}`;
 
 function dialogoMoverAEpica() {
@@ -619,7 +618,7 @@ function renderTabla(visibles) {
         const nombre = e.target.value.trim();
         if (!nombre) return;
         const ultima = estado.proyecto.tareas[estado.proyecto.tareas.length - 1];
-        const id = cambiar(p => { const t = nuevaTareaObj({ nombre, nivel: ultima ? ultima.nivel : 1 }); p.tareas.push(t); return t.id; });
+        const id = cambiar(p => { const t = nuevaTareaObj({ nombre, nivel: ultima ? ultima.nivel + (R(ultima.id).epicaVacia ? 1 : 0) : 1 }); p.tareas.push(t); return t.id; });
         estado.sel = new Set([id]);
         render();
         enfocar('nueva', 'nombre');
@@ -632,7 +631,8 @@ function renderTabla(visibles) {
 function filaTabla(t) {
   const r = R(t.id);
   const sel = estado.sel.has(t.id);
-  const clase = ['fila', sel && 'sel', r.resumen && 'resumen', estado.verCritica && r.critica && !r.resumen && 'critica'].filter(Boolean).join(' ');
+  const epica = r.resumen || r.epicaVacia;
+  const clase = ['fila', sel && 'sel', epica && 'resumen', estado.verCritica && r.critica && !r.resumen && 'critica'].filter(Boolean).join(' ');
   const fila = h('div', { class: clase, 'data-id': t.id });
   const seleccionar = e => seleccionarFila(t.id, e);
 
@@ -663,16 +663,20 @@ function filaTabla(t) {
     h('div', { class: 'celda c-nombre', style: `padding-left:${sangria + 4}px` },
       r.resumen ? h('button', { class: 'plegar', title: plegada ? 'Expandir' : 'Contraer', onclick: () => alternarPlegado(t.id) }, plegada ? '▸' : '▾') : h('span', { class: 'plegar' }),
       entrada('nombre', t.nombre, { placeholder: '(sin nombre)' }),
-      r.resumen ? h('span', { class: 'insignia', title: 'Épica: agrupa tareas' }, plegada ? `ÉPICA · ${contarTareas(t.id)}` : 'ÉPICA') : null),
+      r.resumen ? h('span', { class: 'insignia', title: 'Épica: agrupa tareas' }, plegada ? `ÉPICA · ${contarTareas(t.id)}` : 'ÉPICA')
+        : r.epicaVacia ? h('span', { class: 'insignia', title: 'Épica sin tareas: selecciónala y pulsa ＋ Tarea para agregarle tareas' }, 'ÉPICA') : null),
+    ...(r.epicaVacia
+      ? [h('div', { class: 'celda c-duracion' }), h('div', { class: 'celda c-comienzo' }), h('div', { class: 'celda c-fin' }), h('div', { class: 'celda c-pred' }), h('div', { class: 'celda c-recursos' }), h('div', { class: 'celda c-pct' })]
+      : [
     h('div', { class: 'celda c-duracion' }, entrada('duracion', fmtDur(r.e - r.s, r.hito), { readOnly: r.resumen })),
     h('div', { class: 'celda c-comienzo' }, entrada('comienzo', r.comienzo, { type: 'date', readOnly: r.resumen })),
     h('div', { class: 'celda c-fin' }, entrada('fin', r.fin, { type: 'date', readOnly: r.resumen })),
     h('div', { class: 'celda c-pred' }, selectorPredecesoras(entrada('pred', predecesorasDe(t.id), { placeholder: r.resumen ? '' : 'Elegir…', autocomplete: 'off' }), t.id)),
     h('div', { class: 'celda c-recursos' }, r.resumen ? '' : entrada('recursos', recursosDe(t.id), { list: 'listaRecursos' })),
-    h('div', { class: 'celda c-pct' }, entrada('pct', (t.porcentaje || 0) + '%', { readOnly: r.resumen })),
+    h('div', { class: 'celda c-pct' }, entrada('pct', (t.porcentaje || 0) + '%', { readOnly: r.resumen }))]),
     h('div', { class: 'celda c-kanban' }, celdaKanban(t, r)),
-    h('div', { class: 'celda c-trabajo num' }, fmtHoras(r.trabajo)),
-    h('div', { class: 'celda c-holgura num' }, fmtDur(Math.max(0, r.holgura))),
+    h('div', { class: 'celda c-trabajo num' }, r.epicaVacia ? '' : fmtHoras(r.trabajo)),
+    h('div', { class: 'celda c-holgura num' }, r.epicaVacia ? '' : fmtDur(Math.max(0, r.holgura))),
   );
   return fila;
 }
@@ -683,7 +687,7 @@ function celdaKanban(t, r) {
     const info = enlaces.textoTarjeta(t.kanban);
     return h('button', { type: 'button', class: 'chip-kanban', title: info.titulo + '\nClic: opciones', onclick: e => menuKanban(t, e.currentTarget) }, h('span', {}, '▥'), info.texto);
   }
-  if (r.resumen) return '';
+  if (r.resumen || r.epicaVacia) return '';
   return h('button', { type: 'button', class: 'enlazar-kanban', title: 'Enlazar con una tarjeta del Kanban', onclick: () => enlaces.dialogoEnlazarTarea(estado.proyecto.id, t.id) }, '＋');
 }
 function menuKanban(t, ancla) {
@@ -915,7 +919,9 @@ function renderGrafico(visibles) {
       else g.append(s('rect', { x: bx1, y: y + FILA - 8, width: Math.max(2, bx2 - bx1), height: 4, class: 'lb' }));
     }
     const critica = estado.verCritica && r.critica;
-    if (r.resumen) {
+    if (r.epicaVacia) {
+      g.append(s('text', { x: x1, y: y + FILA / 2 + 4, class: 'etiqueta etiqueta-epica' }, `${t.nombre} · sin tareas todavía`));
+    } else if (r.resumen) {
       const yy = y + 8;
       const xpct = x1 + (x2 - x1) * (t.porcentaje || 0) / 100;
       if (estado.plegadas.has(t.id)) {
@@ -1081,8 +1087,8 @@ function dialogoTarea(id) {
   const asigs = p.asignaciones.filter(a => a.tarea === id).map(a => ({ ...a }));
   const f = {
     nombre: h('input', { value: t.nombre }),
-    duracion: h('input', { value: fmtDur(r.e - r.s, r.hito), disabled: r.resumen }),
-    pct: h('input', { type: 'number', min: 0, max: 100, value: t.porcentaje || 0, disabled: r.resumen }),
+    duracion: h('input', { value: fmtDur(r.e - r.s, r.hito), disabled: r.resumen || r.epicaVacia }),
+    pct: h('input', { type: 'number', min: 0, max: 100, value: t.porcentaje || 0, disabled: r.resumen || r.epicaVacia }),
     modo: h('select', {}, h('option', { value: 'auto', selected: t.modo !== 'manual' }, 'Programada automáticamente'), h('option', { value: 'manual', selected: t.modo === 'manual' }, 'Programada manualmente')),
     comienzoManual: h('input', { type: 'date', value: t.comienzoManual || r.comienzo }),
     restriccion: h('select', {}, Object.entries(RESTRICCIONES).map(([k, v]) => h('option', { value: k, selected: (t.restriccion || 'ASAP') === k }, v))),
@@ -1169,8 +1175,8 @@ function dialogoTarea(id) {
       const d = parseDuracion(f.duracion.value);
       cambiar(() => {
         t.nombre = f.nombre.value.trim();
-        if (!r.resumen && d != null) t.duracion = d;
-        if (!r.resumen) t.porcentaje = Math.max(0, Math.min(100, Math.round(+f.pct.value || 0)));
+        if (!r.resumen && !r.epicaVacia && d != null) t.duracion = d;
+        if (!r.resumen && !r.epicaVacia) t.porcentaje = Math.max(0, Math.min(100, Math.round(+f.pct.value || 0)));
         t.modo = f.modo.value;
         t.comienzoManual = t.modo === 'manual' ? (f.comienzoManual.value || r.comienzo) : null;
         t.restriccion = f.restriccion.value;
