@@ -220,17 +220,34 @@ function insertar(extra) {
   render();
   enfocar(id, 'nombre');
 }
+// Una épica nueva siempre queda en el nivel principal: no tiene que estar dentro de otra épica.
+// Si hay tareas seleccionadas, pasan a ser sus tareas (como en Project). Si estaban dentro de
+// otra épica, la nueva se pone justo después de esa épica. Para anidarla, usa sangría o "Mover a épica".
 function insertarResumen() {
   const ids = seleccionOrdenada();
-  if (!ids.length) return insertar({ nombre: 'Nueva épica' });
-  // Como Project: la épica se inserta encima y las tareas seleccionadas pasan a ser sus tareas
+  let nueva;
   cambiar(p => {
+    nueva = nuevaTareaObj({ nombre: 'Nueva épica', nivel: 1 });
+    if (!ids.length) { p.tareas.push(nueva); return; }
     const i = p.tareas.findIndex(x => x.id === ids[0]);
-    const [, fin] = bloque(ids[ids.length - 1]);
-    const nivel = p.tareas[i].nivel;
-    for (let k = i; k < fin; k++) p.tareas[k].nivel++;
-    p.tareas.splice(i, 0, nuevaTareaObj({ nombre: 'Nueva épica', nivel }));
+    if (p.tareas[i].nivel === 1) {
+      // Tareas del nivel principal: la épica se inserta encima y las agrupa
+      const [, fin] = bloque(ids[ids.length - 1]);
+      for (let k = i; k < fin; k++) p.tareas[k].nivel++;
+      p.tareas.splice(i, 0, nueva);
+      return;
+    }
+    // Dentro de otra épica: la nueva va después de la épica principal que las contiene
+    let raiz = i;
+    while (p.tareas[raiz].nivel > 1) raiz--;
+    let pos = raiz + 1;
+    while (pos < p.tareas.length && p.tareas[pos].nivel > 1) pos++;
+    p.tareas.splice(pos, 0, nueva);
+    moverAEpica(p, ids, nueva.id);
   });
+  estado.sel = new Set([nueva.id]);
+  render();
+  enfocar(nueva.id, 'nombre');
 }
 function cambiarNivel(delta) {
   const ids = seleccionOrdenada();
@@ -1079,7 +1096,7 @@ function dialogoTarea(id) {
   {
     const [i, j] = bloque(id);
     const excluir = new Set(p.tareas.slice(i, j).map(x => x.id));
-    f.epica = h('select', {}, h('option', { value: '' }, 'Sin épica'),
+    f.epica = h('select', {}, h('option', { value: '' }, 'Sin épica (nivel principal)'),
       epicasDisponibles(excluir).map(x => h('option', { value: x.id, selected: x.id === epicaActual }, nombreEpica(x))));
   }
   const tablaPred = h('div');
