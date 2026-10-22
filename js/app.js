@@ -449,11 +449,8 @@ function confirmarCelda(id, col, valor) {
     }
     case 'comienzo':
       if (!valor) return render();
-      cambiar(() => {
-        if (t.modo === 'manual') t.comienzoManual = valor;
-        else { t.restriccion = 'SNET'; t.fechaRestriccion = valor; }
-      });
-      if (t.modo !== 'manual') aviso('Se aplicó la restricción "No comenzar antes del" ' + fmtFechaLarga(valor) + '.');
+      if (t.modo === 'manual') { cambiar(() => { t.comienzoManual = valor; }); break; }
+      cambiarComienzo(id, valor);
       break;
     case 'fin': {
       if (!valor) return render();
@@ -506,6 +503,49 @@ function confirmarCelda(id, col, valor) {
       break;
   }
 }
+// Abre una ventana cuando se suelta la tecla (el Enter que confirmó la celda no debe pulsar sus botones)
+let teclaAbajo = false;
+addEventListener('keydown', () => { teclaAbajo = true; }, true);
+addEventListener('keyup', () => { teclaAbajo = false; }, true);
+function trasSoltarTecla(fn) {
+  if (!teclaAbajo) return fn();
+  addEventListener('keyup', () => setTimeout(fn, 0), { once: true, capture: true });
+}
+// Escribir una fecha en "Comienzo" de una tarea automática pone "No comenzar antes del" esa fecha.
+// Si algo impide empezar ese día (el comienzo del proyecto o una predecesora), se explica y se ofrece
+// resolverlo, en vez de dejar una restricción que no tiene efecto.
+function cambiarComienzo(id, valor) {
+  const p = estado.proyecto, t = T(id);
+  const aplicar = () => { t.restriccion = 'SNET'; t.fechaRestriccion = valor; };
+  if (valor < p.inicio) {
+    render();
+    return trasSoltarTecla(() => dialogoConfirmar('Fecha antes del comienzo del proyecto',
+      `El proyecto empieza el ${fmtFechaLarga(p.inicio)}, así que ninguna tarea puede empezar antes. ¿Quieres que el proyecto empiece el ${fmtFechaLarga(valor)}? Las tareas sin predecesoras ni restricciones también se adelantarán a esa fecha.`,
+      [['Cambiar el comienzo del proyecto', () => { cambiar(() => { p.inicio = valor; aplicar(); }); pintarSelector(); }]]));
+  }
+  // Se programa una copia para ver si la fecha se puede cumplir
+  const copia = structuredClone(p);
+  Object.assign(copia.tareas.find(x => x.id === id), { restriccion: 'SNET', fechaRestriccion: valor });
+  const calc = programar(copia), x = calc.tareas.get(id);
+  if (x.s <= calc.cal.indice(valor)) {
+    cambiar(aplicar);
+    return aviso(`Empieza el ${fmtFechaLarga(x.comienzo)}. Se puso la restricción "No comenzar antes del" esa fecha; se quita en Información → Avanzado.`);
+  }
+  // La retrasa una predecesora (propia o de su épica)
+  const ids = [id, ...ancestros(estado.calc.info, id)];
+  const vinculos = p.dependencias.filter(d => ids.includes(d.succ));
+  const propios = vinculos.filter(d => d.succ === id);
+  const nombres = vinculos.map(d => `${numeroFila(d.pred)} (${T(d.pred)?.nombre || ''})`).join(', ');
+  render();
+  trasSoltarTecla(() => dialogoConfirmar(`No puede empezar el ${fmtFechaLarga(valor)}`,
+    `Depende de ${vinculos.length === 1 ? 'la tarea' : 'las tareas'} ${nombres}, por eso lo antes que puede empezar es el ${fmtFechaLarga(x.comienzo)}.`
+      + (propios.length < vinculos.length ? ' Algún vínculo es de su épica: quítalo en la épica.' : ''),
+    propios.length ? [['Quitar sus predecesoras y empezar ese día', () => cambiar(() => {
+      p.dependencias = p.dependencias.filter(d => d.succ !== id);
+      aplicar();
+    })]] : []));
+}
+
 // Permite escribir el nombre de la tarea en lugar de su Id: "Etapa 1;3" → "6;3"
 function nombresAIds(texto) {
   return String(texto || '').split(/[;,]/).map(parte => {
@@ -1095,7 +1135,8 @@ function abrirDialogo(titulo, contenido, botones) {
 function dialogoConfirmar(titulo, texto, opciones) {
   const dlg = abrirDialogo(titulo, h('p', {}, texto), [
     ...opciones.map(([txt, fn], i) => h('button', { type: 'button', class: i === 0 ? 'primario' : '', onclick: () => { dlg.close(); fn(); } }, txt)),
-    h('button', { type: 'button', onclick: () => dlg.close() }, 'Cancelar'),
+    // El foco queda en Cancelar: un Enter que venía de una celda no debe aceptar sin querer
+    h('button', { type: 'button', class: opciones.length ? '' : 'primario', autofocus: true, onclick: () => dlg.close() }, opciones.length ? 'Cancelar' : 'Entendido'),
   ]);
 }
 const campo = (etiqueta, control) => h('label', { class: 'campo' }, h('span', {}, etiqueta), control);
@@ -1211,6 +1252,13 @@ function dialogoTarea(id) {
         p.asignaciones = p.asignaciones.filter(a => a.tarea !== id).concat(asigs);
       });
       dlg.close();
+      // Avisa si la fecha de la restricción no se puede cumplir
+      const fr = t.fechaRestriccion, x = R(id);
+      if (fr && x && !x.resumen && (t.restriccion === 'SNET' || t.restriccion === 'MSO') && x.s > estado.calc.cal.indice(fr)) {
+        aviso(fr < p.inicio
+          ? `La tarea no puede empezar el ${fmtFechaLarga(fr)} porque el proyecto empieza el ${fmtFechaLarga(p.inicio)} (se cambia en 📅 Proyecto).`
+          : `La tarea no puede empezar el ${fmtFechaLarga(fr)} por sus predecesoras; empieza el ${fmtFechaLarga(x.comienzo)}.`, true);
+      }
     } }, 'Aceptar'),
     h('button', { type: 'button', onclick: () => dlg.close() }, 'Cancelar'),
   ]);
